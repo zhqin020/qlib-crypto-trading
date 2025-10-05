@@ -1,0 +1,300 @@
+                                        const data = JSON.parse(event.data);
+                                        this.handleWebSocketMessage(data);
+                                    };
+                                },
+                                handleWebSocketMessage(message) {
+                                    if (message.type === "history") {
+                                        message.events.forEach((event) =>
+                                            this.handleEvent(event),
+                                        );
+                                    } else {
+                                        this.handleEvent(message);
+                                    }
+                                },
+                                handleEvent(event) {
+                                    let title = event.type.toUpperCase();
+                                    let message = JSON.stringify(event.data).substring(
+                                        0,
+                                        100,
+                                    );
+                                    let className = "info";
+                                let title = event.type.toUpperCase();
+                                let message = JSON.stringify(event.data).substring(0, 100);
+                                let className = 'info';
+
+                                if (event.type === 'mcp_tool_execution') {
+                                    title = `${event.data.tool}`;
+                                    message = `Status: ${event.data.status}`;
+                                    className = event.data.status === 'success' ? 'success' : 'error';
+
+                                    if (event.type === "mcp_tool_execution") {
+                                        title = `MCP: ${event.data.tool}`;
+                                        message = `Status: ${event.data.status}`;
+                                        className =
+                                            event.data.status === "success"
+                                                ? "success"
+                                                : "error";
+                                    }
+
+                                    this.addActivity(
+                                        title,
+                                        message,
+                                        event.timestamp,
+                                        className,
+                                    );
+                                },
+                                addActivity(title, message, timestamp, className = "info") {
+                                    this.activities.unshift({
+                                        id: this.nextActivityId++,
+                                        title,
+                                        message,
+                                        timestamp: timestamp || new Date().toISOString(),
+                                        class: className,
+                                titlemessage  className                addActivity(title, message, timestamp, className = 'info') {
+                                100                        });
+                                    if (this.activities.length > 100) this.activities.pop();
+                                },
+                                addToast(level, title, message) {
+                                    const toast = {
+                                        id: this.nextToastId++,
+                                        level,
+                                        title,
+                                        message,
+                                    };
+                                    this.toasts.push(toast);
+                                    setTimeout(() => {
+                                        const index = this.toasts.findIndex(
+                                            (t) => t.id === toast.id,
+                                        );
+                                        if (index > -1) this.toasts.splice(index, 1);
+                                    }, 5000);
+                                },
+                                async callAPI(endpoint, data, resultField) {
+                                    this.loading = true;
+                                    try {
+                                        const response = await fetch(endpoint, {
+                                            method: "POST",
+                                            headers: { "Content-Type": "application/json" },
+                                            body: JSON.stringify(data),
+                                        });
+                                        const result = await response.json();
+                                        this.forms[resultField].result = JSON.stringify(
+                                            result,
+                                            null,
+                                            2,
+                                        );
+                                        this.addToast(
+                                            "success",
+                                            "Success",
+                                            `${resultField} completed`,
+                                        );
+                                        return result;
+                                    } catch (error) {
+                                        this.forms[resultField].result =
+                                            `Error: ${error.message}`;
+                                        this.addToast("error", "Error", error.message);
+                                    } finally {
+                                        this.loading = false;
+                                    }
+                                },
+                                async getQuote() {
+                                    await this.callAPI(
+                                        "/api/market/quote",
+                                        {
+                                            symbol: this.forms.quote.symbol,
+                                            provider: this.forms.quote.provider || null,
+                                        },
+                                        "quote",
+                                    );
+                                },
+                                async getHistorical() {
+                                    await this.callAPI(
+                                        "/api/market/historical",
+                                        {
+                                            symbol: this.forms.historical.symbol,
+                                            start_date: this.forms.historical.start_date,
+                                            end_date: this.forms.historical.end_date,
+                                            interval: this.forms.historical.interval,
+                                        },
+                                        "historical",
+                                    );
+                                },
+                                async createSnapshot() {
+                                    await this.callAPI(
+                                        "/api/data/snapshot",
+                                        {
+                                            dataset: this.forms.snapshot.dataset,
+                                            calendar: this.forms.snapshot.calendar,
+                                        },
+                                        "snapshot",
+                                    );
+                                },
+                                async createFeatures() {
+                                    const params = this.forms.features.params
+                                        ? JSON.parse(this.forms.features.params)
+                                        : {};
+                                    await this.callAPI(
+                                        "/api/features/create",
+                                        {
+                                            dataset_ref: this.forms.features.dataset_ref,
+                                            handler: this.forms.features.handler,
+                                            params,
+                                        },
+                                        "features",
+                                    );
+                                },
+                                async trainModel() {
+                                    const params = this.forms.train.params
+                                        ? JSON.parse(this.forms.train.params)
+                                        : {};
+                                    await this.callAPI(
+                                        "/api/models/train",
+                                        {
+                                            dataset_ref: this.forms.train.dataset_ref,
+                                            feature_set_ref:
+                                                this.forms.train.feature_set_ref,
+                                            handler: this.forms.train.handler,
+                                            params,
+                                        },
+                                        "train",
+                                    );
+                                },
+                                async runExperiment() {
+                                    await this.callAPI(
+                                        "/api/experiments/run",
+                                        {
+                                            dataset: this.forms.experiment.dataset,
+                                            recipe: this.forms.experiment.recipe,
+                                            costs: this.forms.experiment.costs,
+                                            rebalance: this.forms.experiment.rebalance,
+                                        },
+                                        "experiment",
+                                    );
+                                },
+                                async runBacktest() {
+                                    await this.callAPI(
+                                        "/api/backtests/run",
+                                        {
+                                            model_id: this.forms.backtest.model_id,
+                                            dataset_ref: this.forms.backtest.dataset_ref,
+                                            costs: this.forms.backtest.costs,
+                                            rebalance: this.forms.backtest.rebalance,
+                                        },
+                                        "backtest",
+                                    );
+                                },
+                                async predictToday() {
+                                    await this.callAPI(
+                                        "/api/serving/predict",
+                                        {
+                                            model_id: this.forms.predict.model_id,
+                                            dataset_ref: this.forms.predict.dataset_ref,
+                                        },
+                                        "predict",
+                                    );
+                                },
+                                async createSchedule() {
+                                    const params = this.forms.schedule.params
+                                        ? JSON.parse(this.forms.schedule.params)
+                                        : {};
+                                    await this.callAPI(
+                                        "/api/schedules/create",
+                                        {
+                                            job: this.forms.schedule.job,
+                                            rrule: this.forms.schedule.rrule,
+                                            params,
+                                        },
+                                        "schedule",
+                                    );
+                                },
+                                async sendNotification() {
+                                    const payload = this.forms.notification.payload
+                                        ? JSON.parse(this.forms.notification.payload)
+                                        : {};
+                                    await this.callAPI(
+                                        "/api/notifications/send",
+                                        {
+                                            template_id:
+                                                this.forms.notification.template_id,
+                                            channels: this.forms.notification.channels,
+                                            payload,
+                                        },
+                                        "notification",
+                                    );
+                                },
+                                async tagExperiment() {
+                                    await this.callAPI(
+                                        "/api/experiments/tag",
+                                        {
+                                            run_id: this.forms.tag.run_id,
+                                            tags: this.forms.tag.tags,
+                                        },
+                                        "tag",
+                                    );
+                                },
+                                async cancelRun() {
+                                    await this.callAPI(
+                                        "/api/runs/cancel",
+                                        {
+                                            run_id: this.forms.cancel.run_id,
+                                            reason: this.forms.cancel.reason,
+                                        },
+                                        "cancel",
+                                    );
+                                },
+                                formatTime(timestamp) {
+                                    return new Date(timestamp).toLocaleTimeString();
+                                },
+                            },
+                        }).mount("#app");
+        </script>
+    </body>
+    callAPIendpoint, data, formKey this.loading = true; const response = await
+    fetch(endpoint, { method: 'POST', headers: { 'Content-Type':
+    'application/json' }, body: JSON.stringify(data) }); const result = await
+    response.json(); this.forms[formKey].result = JSON.stringify(result, null,
+    2); this.forms[formKey].status = 'success'; this.addToast('success',
+    'Success', `${formKey} completed`); thisforms[formKey].result = `Error:
+    ${.message}`; this.forms[formKey].status = 'error';
+    this.addToasterror','Error.message; } finally { this.loading = false async
+    getQuoteawaitthiscallAPI'/api/market/quote', { symbol:
+    this.forms.quote.symbol, provider: this.forms.quote.provider || null },
+    'quote' async getHistorical() { await this.callAPI('/api/market/historical',
+    { symbol: this.forms.historical.symbol, start_date:
+    this.forms.historical.start_date, end_date: this.forms.historical.end_date,
+    interval: this.forms.historical.interval }, 'historical'); }, async
+    createSnapshot() { await this.callAPI('/api/data/snapshot', { dataset:
+    this.forms.snapshot.dataset, calendar: this.forms.snapshot.calendar },
+    'snapshot'); }, async createFeatures() { const params =
+    this.forms.features.params ? JSON.parse(this.forms.features.params) : {};
+    await this.callAPI('/api/features/create', { dataset_ref:
+    this.forms.features.dataset_ref, handler: this.forms.features.handler,
+    params }, 'features'); }, async trainModel() { const params =
+    this.forms.train.params ? JSON.parse(this.forms.train.params) : {}; await
+    this.callAPI('/api/models/train', { dataset_ref:
+    this.forms.train.dataset_ref, feature_set_ref:
+    this.forms.train.feature_set_ref, handler: this.forms.train.handler, params
+    }, 'train'); }, async runExperiment() { await
+    this.callAPI('/api/experiments/run', { dataset:
+    this.forms.experiment.dataset, recipe: this.forms.experiment.recipe, costs:
+    this.forms.experiment.costs, rebalance: this.forms.experiment.rebalance },
+    'experiment'); }, async runBacktest() { await
+    this.callAPI('/api/backtests/run', { model_id: this.forms.backtest.model_id,
+    dataset_ref: this.forms.backtest.dataset_ref, costs:
+    this.forms.backtest.costs, rebalance: this.forms.backtest.rebalance },
+    'backtest'); }, async predictToday() { await
+    this.callAPI('/api/serving/predict', { model_id:
+    this.forms.predict.model_id, dataset_ref: this.forms.predict.dataset_ref },
+    'predict'); }, async createSchedule() { const params =
+    this.forms.schedule.params ? JSON.parse(this.forms.schedule.params) : {};
+    await this.callAPI('/api/schedules/create', { job: this.forms.schedule.job,
+    rrule: this.forms.schedule.rrule, params }, 'schedule'); }, async
+    sendNotification() { await this.callAPI('/api/notifications/send', {
+    template_id: this.forms.notification.template_id, channels:
+    this.forms.notification.channels }, 'notification'); }, async
+    tagExperiment() { await this.callAPI('/api/experiments/tag', { run_id:
+    this.forms.tag.run_id, tags: this.forms.tag.tags }, 'tag'); }, async
+    cancelRun() { await this.callAPI('/api/runs/cancel', { run_id:
+    this.forms.cancel.run_id, reason: this.forms.cancel.reason }, 'cancel'); },
+    formatTime(timestamp) { return new Date(timestamp).toLocaleTimeString();
+</html>

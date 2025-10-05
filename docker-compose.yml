@@ -1,0 +1,71 @@
+version: "3.8"
+
+services:
+  # Main API and Web UI
+  api:
+    build: .
+    ports:
+      - "5100:5100"
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./logs:/app/logs
+      - ./config:/app/config
+      - ./backtests:/app/backtests
+      - ./predictions:/app/predictions
+      - ./experiments:/app/experiments
+    environment:
+      - PYTHONPATH=/app/src
+      - PYTHONUNBUFFERED=1
+    command: python -m uvicorn src.ui.api:app --host 0.0.0.0 --port 5100 --reload
+    networks:
+      - qlib-network
+
+  # MCP Server
+  mcp-server:
+    build: .
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./logs:/app/logs
+      - ./config:/app/config
+      - ./backtests:/app/backtests
+      - ./predictions:/app/predictions
+      - ./experiments:/app/experiments
+    environment:
+      - PYTHONPATH=/app/src
+      - PYTHONUNBUFFERED=1
+    command: python -m src.mcp_server.server
+    stdin_open: true
+    tty: true
+    networks:
+      - qlib-network
+
+  # PostgreSQL for metadata storage (optional)
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=qlib_crypto
+      - POSTGRES_USER=qlib
+      - POSTGRES_PASSWORD=qlib_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5110:5432"
+    networks:
+      - qlib-network
+
+  # Redis for caching (optional)
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "5120:6379"
+    networks:
+      - qlib-network
+
+volumes:
+  postgres_data:
+
+networks:
+  qlib-network:
+    driver: bridge

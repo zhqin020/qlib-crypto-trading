@@ -1,0 +1,1167 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Qlib Crypto Trading Platform</title>
+        <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.js"></script>
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+            rel="stylesheet"
+        />
+        <style>
+            :root {
+                --bg-primary: #0a0e1a;
+                --bg-secondary: #0f1420;
+                --bg-tertiary: #151b2b;
+                --bg-elevated: #1a2234;
+                --border: #1f2937;
+                --border-light: #374151;
+                --text-primary: #f9fafb;
+                --text-secondary: #9ca3af;
+                --text-tertiary: #6b7280;
+                --accent: #3b82f6;
+                --accent-hover: #2563eb;
+                --success: #10b981;
+                --danger: #ef4444;
+                --warning: #f59e0b;
+                --success-bg: rgba(16, 185, 129, 0.1);
+                --danger-bg: rgba(239, 68, 68, 0.1);
+            }
+
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+
+            body {
+                font-family:
+                    "Inter",
+                    -apple-system,
+                    BlinkMacSystemFont,
+                    sans-serif;
+                background: var(--bg-primary);
+                color: var(--text-primary);
+                line-height: 1.6;
+            }
+
+            .container {
+                display: grid;
+                grid-template-columns: 280px 1fr 360px;
+                height: 100vh;
+            }
+
+            /* Sidebar */
+            .sidebar {
+                background: var(--bg-secondary);
+                border-right: 1px solid var(--border);
+                padding: 20px;
+                overflow-y: auto;
+            }
+
+            .logo {
+                font-size: 20px;
+                font-weight: 700;
+                margin-bottom: 30px;
+                color: var(--accent);
+            }
+
+            .nav-section {
+                margin-bottom: 24px;
+            }
+
+            .nav-title {
+                font-size: 11px;
+                font-weight: 600;
+                color: var(--text-tertiary);
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                margin-bottom: 8px;
+            }
+
+            .nav-item {
+                padding: 10px 12px;
+                border-radius: 6px;
+                cursor: pointer;
+                transition: all 0.2s;
+                color: var(--text-secondary);
+                font-size: 14px;
+                font-weight: 500;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+
+            .nav-item:hover {
+                background: var(--bg-tertiary);
+                color: var(--text-primary);
+            }
+
+            .nav-item.active {
+                background: var(--accent);
+                color: white;
+            }
+
+            .status {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 8px 12px;
+                background: var(--bg-tertiary);
+                border-radius: 6px;
+                font-size: 13px;
+                margin-top: 16px;
+            }
+
+            .status-dot {
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                background: var(--success);
+                animation: pulse 2s infinite;
+            }
+
+            .status-dot.disconnected {
+                background: var(--danger);
+            }
+
+            @keyframes pulse {
+                0%,
+                100% {
+                    opacity: 1;
+                }
+                50% {
+                    opacity: 0.5;
+                }
+            }
+
+            /* Main Content */
+            .main {
+                overflow-y: auto;
+                padding: 24px;
+            }
+
+            .page-header {
+                margin-bottom: 24px;
+            }
+
+            .page-title {
+                font-size: 28px;
+                font-weight: 700;
+                margin-bottom: 8px;
+            }
+
+            .page-subtitle {
+                color: var(--text-secondary);
+                font-size: 14px;
+            }
+
+            .section {
+                background: var(--bg-secondary);
+                border: 1px solid var(--border);
+                border-radius: 12px;
+                padding: 20px;
+                margin-bottom: 20px;
+            }
+
+            .section-title {
+                font-size: 16px;
+                font-weight: 600;
+                margin-bottom: 16px;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+
+            .form-group {
+                margin-bottom: 16px;
+            }
+
+            .form-label {
+                display: block;
+                font-size: 13px;
+                font-weight: 500;
+                color: var(--text-secondary);
+                margin-bottom: 6px;
+            }
+
+            .form-input,
+            .form-select {
+                width: 100%;
+                padding: 10px 12px;
+                background: var(--bg-tertiary);
+                border: 1px solid var(--border);
+                border-radius: 6px;
+                color: var(--text-primary);
+                font-size: 14px;
+                font-family: inherit;
+            }
+
+            .form-input:focus,
+            .form-select:focus {
+                outline: none;
+                border-color: var(--accent);
+            }
+
+            .btn {
+                padding: 10px 20px;
+                border: none;
+                border-radius: 6px;
+                font-weight: 600;
+                font-size: 14px;
+                cursor: pointer;
+                transition: all 0.2s;
+            }
+
+            .btn-primary {
+                background: var(--accent);
+                color: white;
+                width: 100%;
+            }
+
+            .btn-primary:hover {
+                background: var(--accent-hover);
+            }
+            .btn-primary:disabled {
+                opacity: 0.5;
+                cursor: not-allowed;
+            }
+
+            .btn-sm {
+                padding: 6px 12px;
+                font-size: 13px;
+            }
+
+            .result-box {
+                margin-top: 16px;
+                padding: 12px;
+                background: var(--bg-tertiary);
+                border: 1px solid var(--border);
+                border-radius: 6px;
+                font-family: "JetBrains Mono", monospace;
+                font-size: 12px;
+                max-height: 200px;
+                overflow-y: auto;
+            }
+
+            .result-box.success {
+                border-color: var(--success);
+                background: var(--success-bg);
+            }
+            .result-box.error {
+                border-color: var(--danger);
+                background: var(--danger-bg);
+            }
+
+            /* Lists */
+            .list-item {
+                padding: 12px;
+                background: var(--bg-tertiary);
+                border-radius: 6px;
+                margin-bottom: 8px;
+                cursor: pointer;
+                transition: all 0.2s;
+            }
+
+            .list-item:hover {
+                background: var(--bg-elevated);
+            }
+            .list-item.selected {
+                border: 1px solid var(--accent);
+            }
+
+            .list-item-title {
+                font-weight: 600;
+                margin-bottom: 4px;
+            }
+
+            .list-item-meta {
+                font-size: 12px;
+                color: var(--text-secondary);
+            }
+
+            .badge {
+                padding: 4px 8px;
+                border-radius: 4px;
+                font-size: 11px;
+                font-weight: 600;
+            }
+
+            .badge-success {
+                background: var(--success);
+                color: white;
+            }
+            .badge-info {
+                background: var(--accent);
+                color: white;
+            }
+
+            /* Activity Panel */
+            .activity {
+                background: var(--bg-secondary);
+                border-left: 1px solid var(--border);
+                overflow-y: auto;
+                display: flex;
+                flex-direction: column;
+            }
+
+            .activity-header {
+                padding: 20px;
+                border-bottom: 1px solid var(--border);
+                font-size: 16px;
+                font-weight: 600;
+            }
+
+            .activity-feed {
+                padding: 12px;
+                flex: 1;
+            }
+
+            .activity-item {
+                padding: 12px;
+                background: var(--bg-tertiary);
+                border-left: 3px solid var(--accent);
+                border-radius: 6px;
+                margin-bottom: 8px;
+                font-size: 13px;
+            }
+
+            .activity-item.success {
+                border-left-color: var(--success);
+            }
+            .activity-item.error {
+                border-left-color: var(--danger);
+            }
+
+            .activity-time {
+                font-size: 11px;
+                color: var(--text-tertiary);
+                margin-top: 4px;
+            }
+
+            .spinner {
+                display: inline-block;
+                width: 16px;
+                height: 16px;
+                border: 2px solid rgba(255, 255, 255, 0.3);
+                border-top-color: white;
+                border-radius: 50%;
+                animation: spin 0.8s linear infinite;
+            }
+
+            @keyframes spin {
+                to {
+                    transform: rotate(360deg);
+                }
+            }
+
+            .empty {
+                text-align: center;
+                padding: 40px;
+                color: var(--text-tertiary);
+            }
+
+            .grid-2 {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 12px;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="app">
+            <div class="container">
+                <!-- Sidebar -->
+                <div class="sidebar">
+                    <div class="logo">⚡ Qlib Crypto</div>
+
+                    <div class="nav-section">
+                        <div class="nav-title">Navigation</div>
+                        <div
+                            :class="['nav-item', {active: page === 'dashboard'}]"
+                            @click="page = 'dashboard'"
+                        >
+                            📊 Dashboard
+                        </div>
+                        <div
+                            :class="['nav-item', {active: page === 'data'}]"
+                            @click="page = 'data'"
+                        >
+                            💹 Market Data
+                        </div>
+                        <div
+                            :class="['nav-item', {active: page === 'models'}]"
+                            @click="page = 'models'"
+                        >
+                            🤖 Models
+                        </div>
+                        <div
+                            :class="['nav-item', {active: page === 'backtest'}]"
+                            @click="page = 'backtest'"
+                        >
+                            📈 Backtest
+                        </div>
+                        <div
+                            :class="['nav-item', {active: page === 'predictions'}]"
+                            @click="page = 'predictions'"
+                        >
+                            🔮 Predictions
+                        </div>
+                    </div>
+
+                    <div class="status">
+                        <div
+                            :class="['status-dot', {disconnected: !connected}]"
+                        ></div>
+                        <span
+                            >{{ connected ? 'Connected' : 'Disconnected'
+                            }}</span
+                        >
+                    </div>
+                </div>
+
+                <!-- Main Content -->
+                <div class="main">
+                    <!-- Dashboard -->
+                    <div v-if="page === 'dashboard'">
+                        <div class="page-header">
+                            <h1 class="page-title">Dashboard</h1>
+                            <p class="page-subtitle">
+                                Crypto trading platform powered by Qlib
+                            </p>
+                        </div>
+
+                        <div class="section">
+                            <div class="section-title">📊 Quick Stats</div>
+                            <div class="grid-2">
+                                <div
+                                    style="
+                                        padding: 16px;
+                                        background: var(--bg-tertiary);
+                                        border-radius: 8px;
+                                    "
+                                >
+                                    <div
+                                        style="
+                                            color: var(--text-secondary);
+                                            font-size: 12px;
+                                        "
+                                    >
+                                        Models
+                                    </div>
+                                    <div
+                                        style="
+                                            font-size: 24px;
+                                            font-weight: 700;
+                                        "
+                                    >
+                                        {{ models.length }}
+                                    </div>
+                                </div>
+                                <div
+                                    style="
+                                        padding: 16px;
+                                        background: var(--bg-tertiary);
+                                        border-radius: 8px;
+                                    "
+                                >
+                                    <div
+                                        style="
+                                            color: var(--text-secondary);
+                                            font-size: 12px;
+                                        "
+                                    >
+                                        Datasets
+                                    </div>
+                                    <div
+                                        style="
+                                            font-size: 24px;
+                                            font-weight: 700;
+                                        "
+                                    >
+                                        {{ datasets.length }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Market Data -->
+                    <div v-if="page === 'data'">
+                        <div class="page-header">
+                            <h1 class="page-title">Market Data</h1>
+                            <p class="page-subtitle">
+                                Download crypto data from exchanges
+                            </p>
+                        </div>
+
+                        <div class="section">
+                            <div class="section-title">📥 Download Data</div>
+                            <div class="form-group">
+                                <label class="form-label">Crypto Symbol</label>
+                                <select
+                                    v-model="forms.data.symbol"
+                                    class="form-select"
+                                >
+                                    <option value="BTC/USDT">BTC/USDT</option>
+                                    <option value="ETH/USDT">ETH/USDT</option>
+                                    <option value="BNB/USDT">BNB/USDT</option>
+                                    <option value="SOL/USDT">SOL/USDT</option>
+                                    <option value="ADA/USDT">ADA/USDT</option>
+                                    <option value="XRP/USDT">XRP/USDT</option>
+                                    <option value="DOT/USDT">DOT/USDT</option>
+                                    <option value="MATIC/USDT">
+                                        MATIC/USDT
+                                    </option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Exchange</label>
+                                <select
+                                    v-model="forms.data.provider"
+                                    class="form-select"
+                                >
+                                    <option value="binance">Binance</option>
+                                    <option value="kraken">Kraken</option>
+                                    <option value="coinbase">Coinbase</option>
+                                </select>
+                            </div>
+                            <div class="grid-2">
+                                <div class="form-group">
+                                    <label class="form-label">Start Date</label>
+                                    <input
+                                        type="date"
+                                        v-model="forms.data.start_date"
+                                        class="form-input"
+                                    />
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">End Date</label>
+                                    <input
+                                        type="date"
+                                        v-model="forms.data.end_date"
+                                        class="form-input"
+                                    />
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Interval</label>
+                                <select
+                                    v-model="forms.data.interval"
+                                    class="form-select"
+                                >
+                                    <option value="1d">1 Day</option>
+                                    <option value="1h">1 Hour</option>
+                                    <option value="15m">15 Minutes</option>
+                                </select>
+                            </div>
+                            <button
+                                @click="downloadData"
+                                class="btn btn-primary"
+                                :disabled="loading"
+                            >
+                                <span v-if="!loading">Download Data</span>
+                                <span v-else
+                                    ><span class="spinner"></span>
+                                    Downloading...</span
+                                >
+                            </button>
+                            <div
+                                v-if="forms.data.result"
+                                :class="['result-box', forms.data.status]"
+                            >
+                                {{ forms.data.result }}
+                            </div>
+                        </div>
+
+                        <div class="section">
+                            <div class="section-title">
+                                🔄 Convert to Dataset
+                            </div>
+                            <p
+                                style="
+                                    color: var(--text-secondary);
+                                    font-size: 13px;
+                                    margin-bottom: 16px;
+                                "
+                            >
+                                After downloading data, convert CSV to Qlib
+                                dataset for training
+                            </p>
+                            <div class="form-group">
+                                <label class="form-label">Dataset Name</label>
+                                <input
+                                    v-model="forms.convert.dataset"
+                                    class="form-input"
+                                    placeholder="crypto_btc_daily"
+                                />
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Frequency</label>
+                                <select
+                                    v-model="forms.convert.freq"
+                                    class="form-select"
+                                >
+                                    <option value="1d">Daily (1d)</option>
+                                    <option value="1h">Hourly (1h)</option>
+                                </select>
+                            </div>
+                            <button
+                                @click="convertData"
+                                class="btn btn-primary"
+                                :disabled="loading || !forms.convert.dataset"
+                            >
+                                <span v-if="!loading">Create Dataset</span>
+                                <span v-else
+                                    ><span class="spinner"></span>
+                                    Converting...</span
+                                >
+                            </button>
+                            <div
+                                v-if="forms.convert.result"
+                                :class="['result-box', forms.convert.status]"
+                            >
+                                {{ forms.convert.result }}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Models -->
+                    <div v-if="page === 'models'">
+                        <div class="page-header">
+                            <h1 class="page-title">Models</h1>
+                            <p class="page-subtitle">
+                                Train and manage ML models
+                            </p>
+                        </div>
+
+                        <div class="section">
+                            <div class="section-title">📋 Trained Models</div>
+                            <button
+                                @click="loadModels"
+                                class="btn btn-primary btn-sm"
+                                style="width: auto; margin-bottom: 12px"
+                            >
+                                Refresh
+                            </button>
+                            <div v-if="models.length === 0" class="empty">
+                                No models yet
+                            </div>
+                            <div
+                                v-for="model in models"
+                                :key="model.model_id"
+                                :class="['list-item', {selected: selectedModel?.model_id === model.model_id}]"
+                                @click="selectedModel = model"
+                            >
+                                <div class="list-item-title">
+                                    {{ model.model_id }}
+                                </div>
+                                <div class="list-item-meta">
+                                    Handler: {{ model.handler }} | Dataset: {{
+                                    model.dataset }}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="section">
+                            <div class="section-title">🎯 Train New Model</div>
+                            <div class="form-group">
+                                <label class="form-label">Dataset</label>
+                                <select
+                                    v-model="forms.train.dataset"
+                                    class="form-select"
+                                    @focus="loadDatasets"
+                                >
+                                    <option value="">Select dataset...</option>
+                                    <option
+                                        v-for="ds in datasets"
+                                        :key="ds.name"
+                                        :value="ds.name"
+                                    >
+                                        {{ ds.name }}
+                                    </option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label"
+                                    >Feature Handler</label
+                                >
+                                <select
+                                    v-model="forms.train.feature_handler"
+                                    class="form-select"
+                                >
+                                    <option value="alpha158">
+                                        Alpha158 (158 features)
+                                    </option>
+                                    <option value="alpha360">
+                                        Alpha360 (360 features)
+                                    </option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Model Type</label>
+                                <select
+                                    v-model="forms.train.model_handler"
+                                    class="form-select"
+                                >
+                                    <option value="lightgbm">LightGBM</option>
+                                    <option value="xgboost">XGBoost</option>
+                                    <option value="linear">Linear</option>
+                                </select>
+                            </div>
+                            <button
+                                @click="trainModel"
+                                class="btn btn-primary"
+                                :disabled="loading || !forms.train.dataset"
+                            >
+                                <span v-if="!loading">Train Model</span>
+                                <span v-else
+                                    ><span class="spinner"></span>
+                                    Training...</span
+                                >
+                            </button>
+                            <div
+                                v-if="forms.train.result"
+                                :class="['result-box', forms.train.status]"
+                            >
+                                {{ forms.train.result }}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Backtest -->
+                    <div v-if="page === 'backtest'">
+                        <div class="page-header">
+                            <h1 class="page-title">Backtest</h1>
+                            <p class="page-subtitle">
+                                Test models on historical data
+                            </p>
+                        </div>
+
+                        <div class="section">
+                            <div class="section-title">📈 Run Backtest</div>
+                            <div class="form-group">
+                                <label class="form-label">Select Model</label>
+                                <select
+                                    v-model="forms.backtest.model_id"
+                                    class="form-select"
+                                    @focus="loadModels"
+                                >
+                                    <option value="">
+                                        Select a trained model...
+                                    </option>
+                                    <option
+                                        v-for="model in models"
+                                        :key="model.model_id"
+                                        :value="model.model_id"
+                                    >
+                                        {{ model.model_id }} ({{ model.handler
+                                        }})
+                                    </option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Dataset</label>
+                                <select
+                                    v-model="forms.backtest.dataset"
+                                    class="form-select"
+                                    @focus="loadDatasets"
+                                >
+                                    <option value="">Select dataset...</option>
+                                    <option
+                                        v-for="ds in datasets"
+                                        :key="ds.name"
+                                        :value="ds.name"
+                                    >
+                                        {{ ds.name }}
+                                    </option>
+                                </select>
+                            </div>
+                            <div class="grid-2">
+                                <div class="form-group">
+                                    <label class="form-label"
+                                        >Transaction Costs</label
+                                    >
+                                    <select
+                                        v-model="forms.backtest.costs"
+                                        class="form-select"
+                                    >
+                                        <option value="low">Low (0.05%)</option>
+                                        <option value="medium">
+                                            Medium (0.1%)
+                                        </option>
+                                        <option value="high">
+                                            High (0.2%)
+                                        </option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Rebalance</label>
+                                    <select
+                                        v-model="forms.backtest.rebalance"
+                                        class="form-select"
+                                    >
+                                        <option value="weekly">Weekly</option>
+                                        <option value="monthly">Monthly</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <button
+                                @click="runBacktest"
+                                class="btn btn-primary"
+                                :disabled="loading || !forms.backtest.model_id"
+                            >
+                                <span v-if="!loading">Run Backtest</span>
+                                <span v-else
+                                    ><span class="spinner"></span>
+                                    Running...</span
+                                >
+                            </button>
+                            <div
+                                v-if="forms.backtest.result"
+                                :class="['result-box', forms.backtest.status]"
+                            >
+                                {{ forms.backtest.result }}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Predictions -->
+                    <div v-if="page === 'predictions'">
+                        <div class="page-header">
+                            <h1 class="page-title">Predictions</h1>
+                            <p class="page-subtitle">
+                                Generate trading predictions
+                            </p>
+                        </div>
+
+                        <div class="section">
+                            <div class="section-title">
+                                🔮 Generate Predictions
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Select Model</label>
+                                <select
+                                    v-model="forms.predict.model_id"
+                                    class="form-select"
+                                    @focus="loadModels"
+                                >
+                                    <option value="">
+                                        Select a trained model...
+                                    </option>
+                                    <option
+                                        v-for="model in models"
+                                        :key="model.model_id"
+                                        :value="model.model_id"
+                                    >
+                                        {{ model.model_id }} ({{ model.handler
+                                        }})
+                                    </option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Dataset</label>
+                                <select
+                                    v-model="forms.predict.dataset"
+                                    class="form-select"
+                                    @focus="loadDatasets"
+                                >
+                                    <option value="">Select dataset...</option>
+                                    <option
+                                        v-for="ds in datasets"
+                                        :key="ds.name"
+                                        :value="ds.name"
+                                    >
+                                        {{ ds.name }}
+                                    </option>
+                                </select>
+                            </div>
+                            <button
+                                @click="generatePredictions"
+                                class="btn btn-primary"
+                                :disabled="loading || !forms.predict.model_id"
+                            >
+                                <span v-if="!loading"
+                                    >Generate Predictions</span
+                                >
+                                <span v-else
+                                    ><span class="spinner"></span>
+                                    Generating...</span
+                                >
+                            </button>
+                            <div
+                                v-if="forms.predict.result"
+                                :class="['result-box', forms.predict.status]"
+                            >
+                                {{ forms.predict.result }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Activity Panel -->
+                <div class="activity">
+                    <div class="activity-header">Activity Feed</div>
+                    <div class="activity-feed">
+                        <div v-if="activities.length === 0" class="empty">
+                            No activity yet
+                        </div>
+                        <div
+                            v-for="act in activities.slice(0, 30)"
+                            :key="act.id"
+                            :class="['activity-item', act.class]"
+                        >
+                            <div>{{ act.message }}</div>
+                            <div class="activity-time">
+                                {{ formatTime(act.timestamp) }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            const { createApp } = Vue;
+
+            createApp({
+                data() {
+                    return {
+                        connected: false,
+                        ws: null,
+                        loading: false,
+                        page: "dashboard",
+                        models: [],
+                        datasets: [],
+                        selectedModel: null,
+                        activities: [],
+                        nextId: 1,
+                        forms: {
+                            data: {
+                                symbol: "BTC/USDT",
+                                provider: "binance",
+                                start_date: "2024-01-01",
+                                end_date: "2024-12-31",
+                                interval: "1d",
+                                result: "",
+                                status: "",
+                            },
+                            convert: {
+                                dataset: "crypto_btc_daily",
+                                freq: "1d",
+                                result: "",
+                                status: "",
+                            },
+                            train: {
+                                dataset: "",
+                                feature_handler: "alpha158",
+                                model_handler: "lightgbm",
+                                result: "",
+                                status: "",
+                            },
+                            backtest: {
+                                model_id: "",
+                                dataset: "",
+                                costs: "medium",
+                                rebalance: "weekly",
+                                result: "",
+                                status: "",
+                            },
+                            predict: {
+                                model_id: "",
+                                dataset: "",
+                                result: "",
+                                status: "",
+                            },
+                        },
+                    };
+                },
+                mounted() {
+                    this.connectWebSocket();
+                    this.loadModels();
+                    this.loadDatasets();
+                },
+                methods: {
+                    connectWebSocket() {
+                        const protocol =
+                            window.location.protocol === "https:"
+                                ? "wss:"
+                                : "ws:";
+                        const wsUrl = `${protocol}//${window.location.host}/ws/events`;
+                        this.ws = new WebSocket(wsUrl);
+
+                        this.ws.onopen = () => {
+                            this.connected = true;
+                            this.addActivity("WebSocket connected", "success");
+                        };
+
+                        this.ws.onclose = () => {
+                            this.connected = false;
+                            setTimeout(() => this.connectWebSocket(), 3000);
+                        };
+
+                        this.ws.onmessage = (event) => {
+                            const data = JSON.parse(event.data);
+                            if (data.type === "history") {
+                                data.events.forEach((e) => this.handleEvent(e));
+                            } else {
+                                this.handleEvent(data);
+                            }
+                        };
+                    },
+                    handleEvent(event) {
+                        let msg = event.type;
+                        let cls = "info";
+                        if (event.type === "mcp_tool_execution") {
+                            msg = `${event.data.tool}: ${event.data.status}`;
+                            cls =
+                                event.data.status === "success"
+                                    ? "success"
+                                    : "error";
+                        }
+                        this.addActivity(msg, cls);
+                    },
+                    addActivity(message, className = "info") {
+                        this.activities.unshift({
+                            id: this.nextId++,
+                            message,
+                            class: className,
+                            timestamp: new Date().toISOString(),
+                        });
+                        if (this.activities.length > 100) this.activities.pop();
+                    },
+                    async loadModels() {
+                        try {
+                            const res = await fetch("/api/models");
+                            const data = await res.json();
+                            this.models = data.models || [];
+                        } catch (e) {
+                            console.error("Failed to load models:", e);
+                        }
+                    },
+                    async loadDatasets() {
+                        try {
+                            const res = await fetch("/api/datasets");
+                            const data = await res.json();
+                            this.datasets = data.datasets || [];
+                        } catch (e) {
+                            console.error("Failed to load datasets:", e);
+                        }
+                    },
+                    async callAPI(endpoint, data, formKey) {
+                        this.loading = true;
+                        try {
+                            const res = await fetch(endpoint, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify(data),
+                            });
+                            const result = await res.json();
+                            this.forms[formKey].result = JSON.stringify(
+                                result,
+                                null,
+                                2,
+                            );
+                            this.forms[formKey].status = "success";
+                            this.addActivity(`${formKey} completed`, "success");
+                        } catch (error) {
+                            this.forms[formKey].result =
+                                `Error: ${error.message}`;
+                            this.forms[formKey].status = "error";
+                            this.addActivity(
+                                `${formKey} failed: ${error.message}`,
+                                "error",
+                            );
+                        } finally {
+                            this.loading = false;
+                        }
+                    },
+                    async downloadData() {
+                        await this.callAPI(
+                            "/api/data/download",
+                            {
+                                symbols: [this.forms.data.symbol],
+                                start_date: this.forms.data.start_date,
+                                end_date: this.forms.data.end_date,
+                                interval: this.forms.data.interval,
+                                provider: this.forms.data.provider,
+                            },
+                            "data",
+                        );
+                    },
+                    async convertData() {
+                        this.loading = true;
+                        try {
+                            const res = await fetch(
+                                `/api/data/convert?dataset=${this.forms.convert.dataset}&freq=${this.forms.convert.freq}`,
+                                {
+                                    method: "POST",
+                                },
+                            );
+                            const result = await res.json();
+                            this.forms.convert.result = JSON.stringify(
+                                result,
+                                null,
+                                2,
+                            );
+                            this.forms.convert.status = "success";
+                            this.addActivity(
+                                "Dataset converted successfully",
+                                "success",
+                            );
+                            setTimeout(() => this.loadDatasets(), 2000);
+                        } catch (error) {
+                            this.forms.convert.result = `Error: ${error.message}`;
+                            this.forms.convert.status = "error";
+                            this.addActivity(
+                                `Convert failed: ${error.message}`,
+                                "error",
+                            );
+                        } finally {
+                            this.loading = false;
+                        }
+                    },
+                    async trainModel() {
+                        await this.callAPI(
+                            "/api/models/train",
+                            {
+                                dataset: this.forms.train.dataset,
+                                feature_handler:
+                                    this.forms.train.feature_handler,
+                                model_handler: this.forms.train.model_handler,
+                            },
+                            "train",
+                        );
+                        setTimeout(() => this.loadModels(), 2000);
+                    },
+                    async runBacktest() {
+                        await this.callAPI(
+                            "/api/backtests/run",
+                            {
+                                model_id: this.forms.backtest.model_id,
+                                dataset: this.forms.backtest.dataset,
+                                costs: this.forms.backtest.costs,
+                                rebalance: this.forms.backtest.rebalance,
+                            },
+                            "backtest",
+                        );
+                    },
+                    async generatePredictions() {
+                        await this.callAPI(
+                            "/api/predictions/generate",
+                            {
+                                model_id: this.forms.predict.model_id,
+                                dataset: this.forms.predict.dataset,
+                            },
+                            "predict",
+                        );
+                    },
+                    formatTime(timestamp) {
+                        return new Date(timestamp).toLocaleTimeString();
+                    },
+                },
+            }).mount("#app");
+        </script>
+    </body>
+</html>

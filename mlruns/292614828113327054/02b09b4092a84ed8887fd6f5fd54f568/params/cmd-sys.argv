@@ -1,0 +1,1 @@
+/Users/chadwyatt/Code/trading/qlib-2/venv/lib/python3.13/site-packages/uvicorn/__main__.py src.ui.api_enhanced:app --host 0.0.0.0 --port 5100 --reload

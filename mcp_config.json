@@ -1,0 +1,30 @@
+{
+  "mcpServers": {
+    "qlib-trading": {
+      "command": "python",
+      "args": ["-m", "src.mcp_server.server"],
+      "cwd": "/Users/chadwyatt/Code/trading/qlib-2",
+      "env": {
+        "PYTHONPATH": "/Users/chadwyatt/Code/trading/qlib-2/src"
+      },
+      "description": "Qlib Crypto Trading Platform MCP Server",
+      "tools": [
+        "data_create_snapshot",
+        "features_create_set",
+        "market_data_get_quote",
+        "market_data_get_quotes_batch",
+        "market_data_get_historical",
+        "market_data_subscribe",
+        "models_train",
+        "experiments_run_recipe",
+        "backtests_run",
+        "experiments_tag",
+        "runs_cancel",
+        "serving_predict_today",
+        "notifications_dispatch",
+        "schedules_create",
+        "knowledge_describe_screen"
+      ]
+    }
+  }
+}
