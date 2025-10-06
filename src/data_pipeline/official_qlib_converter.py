@@ -80,8 +80,10 @@ def run_official_dump_bin(
 
     NO FALLBACKS - Fails if dump_bin.py fails
     """
-    # Find dump_bin.py in Qlib installation
-    dump_bin_script = Path("/private/tmp/qlib/scripts/dump_bin.py")
+    # Find dump_bin.py in Qlib installation (platform-independent)
+    import qlib
+    qlib_path = Path(qlib.__file__).parent
+    dump_bin_script = qlib_path / "scripts" / "dump_bin.py"
 
     if not dump_bin_script.exists():
         raise FileNotFoundError(

@@ -35,23 +35,24 @@ async def run_backtest(
         Backtest results with performance metrics
     """
     try:
-        import qlib
         from qlib.backtest import backtest as qlib_backtest, executor
         from qlib.contrib.strategy import TopkDropoutStrategy
         from qlib.contrib.evaluate import risk_analysis
         from qlib.utils import init_instance_by_config
+        from ..utils.qlib_state import init_qlib_clean
 
         project_root = Path(__file__).parent.parent.parent
         models_dir = project_root / "models" / "trained"
         qlib_dir = project_root / "data" / "qlib" / dataset_ref
 
-        # Initialize Qlib if not already
-        if not qlib.__dict__.get('_inited', False):
-            qlib.init(
-                provider_uri=str(qlib_dir),
-                region="crypto",
-                auto_mount=True
-            )
+        # Initialize Qlib with clean cache (prevents state bleed)
+        success = init_qlib_clean(
+            provider_uri=str(qlib_dir),
+            region="cn",
+            auto_mount=True
+        )
+        if not success:
+            raise RuntimeError(f"Failed to initialize qlib for backtest: {model_id}")
 
         # Load model
         model_path = models_dir / f"{model_id}.pkl"

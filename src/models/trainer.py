@@ -31,29 +31,25 @@ async def train_model(
         Training result with model_id and metrics
     """
     try:
-        import qlib
         from qlib.workflow import R
         from qlib.workflow.record_temp import SignalRecord
         from qlib.utils import init_instance_by_config
+        from ..utils.qlib_state import init_qlib_clean
 
         project_root = Path(__file__).parent.parent.parent
         qlib_dir = project_root / "data" / "qlib" / dataset_ref
         models_dir = project_root / "models" / "trained"
         models_dir.mkdir(parents=True, exist_ok=True)
 
-        # Initialize Qlib for crypto (custom config for 24/7 markets)
-        if not qlib.__dict__.get('_inited', False):
-            # Register custom crypto region with 24/7 calendar
-            from qlib.config import C
-            from qlib.utils import get_or_create_path
-
-            # Use provider_uri without region (Qlib will use custom calendar)
-            qlib.init(
-                provider_uri=str(qlib_dir),
-                # Don't specify region - use custom crypto calendar instead
-                expression_cache=None,
-                dataset_cache=None,
-            )
+        # Initialize Qlib with clean cache (prevents state bleed)
+        success = init_qlib_clean(
+            provider_uri=str(qlib_dir),
+            region="cn",
+            expression_cache=None,
+            dataset_cache=None,
+        )
+        if not success:
+            raise RuntimeError(f"Failed to initialize qlib for dataset: {dataset_ref}")
 
         # Generate unique model ID
         model_id = f"{handler}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"

@@ -25,21 +25,22 @@ async def predict_today(model_id: str, dataset_ref: str) -> Dict[str, Any]:
         Predictions with confidence scores
     """
     try:
-        import qlib
         from qlib.data.dataset import DatasetH
         from qlib.utils import init_instance_by_config
+        from ..utils.qlib_state import init_qlib_clean
 
         project_root = Path(__file__).parent.parent.parent
         models_dir = project_root / "models" / "trained"
         qlib_dir = project_root / "data" / "qlib" / dataset_ref
 
-        # Initialize Qlib
-        if not qlib.__dict__.get('_inited', False):
-            qlib.init(
-                provider_uri=str(qlib_dir),
-                region="crypto",
-                auto_mount=True
-            )
+        # Initialize Qlib with clean cache (prevents state bleed)
+        success = init_qlib_clean(
+            provider_uri=str(qlib_dir),
+            region="cn",
+            auto_mount=True
+        )
+        if not success:
+            raise RuntimeError(f"Failed to initialize qlib for predictions: {model_id}")
 
         # Load model
         model_path = models_dir / f"{model_id}.pkl"
