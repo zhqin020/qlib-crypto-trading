@@ -1,11 +1,16 @@
 #!/bin/bash
-# Start the MCP server
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-cd "$(dirname "$0")/.."
+export PYTHONPATH="${PYTHONPATH}:${PROJECT_ROOT}/src"
 
-export PYTHONPATH="${PYTHONPATH}:$(pwd)/src"
+# Send startup messages to stderr to keep stdout clean for MCP protocol
+echo "Starting MCP Server for Qlib Crypto Trading Platform..." >&2
 
-echo "Starting MCP Server for Qlib Crypto Trading Platform..."
-echo ""
-
-python -m src.mcp_server.server
+# Try to use venv python if it exists, otherwise fall back to system python3
+if [ -f "${PROJECT_ROOT}/venv/bin/python3" ]; then
+    "${PROJECT_ROOT}/venv/bin/python3" -m src.mcp_server
+else
+    python3 -m src.mcp_server
+fi

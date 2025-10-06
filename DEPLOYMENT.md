@@ -168,7 +168,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
   "mcpServers": {
     "qlib-trading": {
       "command": "python",
-      "args": ["-m", "src.mcp_server.server"],
+      "args": ["-m", "src.mcp_server"],
       "cwd": "/absolute/path/to/qlib-2",
       "env": {
         "PYTHONPATH": "/absolute/path/to/qlib-2/src"
@@ -185,14 +185,14 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
 ./scripts/start_mcp_server.sh
 
 # Test with MCP inspector
-npx @modelcontextprotocol/inspector python -m src.mcp_server.server
+npx @modelcontextprotocol/inspector python -m src.mcp_server
 ```
 
 ## Security
 
 ### API Authentication
 
-Add JWT authentication to `src/ui/api.py`:
+Add JWT authentication to `src/ui/api_enhanced.py`:
 
 ```python
 from fastapi.security import HTTPBearer
@@ -253,7 +253,7 @@ server {
 
 ### Prometheus Metrics
 
-Add to `src/ui/api.py`:
+Add to `src/ui/api_enhanced.py`:
 
 ```python
 from prometheus_client import Counter, Histogram, generate_latest
@@ -414,7 +414,7 @@ free -h
 
 ```bash
 # Start API in debug mode
-uvicorn src.ui.api:app --reload --log-level debug
+uvicorn src.ui.api_enhanced:app --reload --log-level debug
 ```
 
 ## Performance Tuning

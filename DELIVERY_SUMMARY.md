@@ -103,7 +103,7 @@
 **Location:** `src/ui/`
 
 **Files:**
-- `api.py` - Complete FastAPI application
+- `api_enhanced.py` - Complete FastAPI application with WebSocket support
 - `__init__.py` - Package initialization
 
 **API Endpoints:**
@@ -173,11 +173,14 @@ All scripts are executable and well-documented.
 ### 10. Complete Documentation ✅
 
 **Documentation Files:**
-- `README.md` (12,000+ words) - Complete platform guide
-- `QUICKSTART.md` (2,000+ words) - 5-minute getting started
-- `DEPLOYMENT.md` (4,000+ words) - Production deployment
-- `PLATFORM_OVERVIEW.md` (5,000+ words) - Architecture overview
+- `README.md` (~1,400 words) - Complete platform guide
+- `QUICKSTART.md` (~600 words) - 5-minute getting started
+- `DEPLOYMENT.md` (~1,000 words) - Production deployment
+- `PLATFORM_OVERVIEW.md` (~1,600 words) - Architecture overview
 - `DELIVERY_SUMMARY.md` - This document
+- Additional documentation: ~17,500 words total across all .md files
+
+> **Word counts verified:** 2025-10-07 using `wc -w`
 
 **Inline Documentation:**
 - Docstrings in all Python files
@@ -245,7 +248,7 @@ Add to Claude Desktop config:
   "mcpServers": {
     "qlib-trading": {
       "command": "python",
-      "args": ["-m", "src.mcp_server.server"],
+      "args": ["-m", "src.mcp_server"],
       "cwd": "/Users/chadwyatt/Code/trading/qlib-2"
     }
   }
@@ -293,7 +296,7 @@ All requirements delivered:
 3. **Multi-Model** - 4 different ML algorithms out of the box
 4. **Production-Ready** - Docker, tests, monitoring, documentation
 5. **Extensible** - Easy to add new models, features, exchanges
-6. **Well-Documented** - 23,000+ words of documentation
+6. **Well-Documented** - ~17,500 words of documentation (verified 2025-10-07)
 7. **Battle-Tested** - Built on Microsoft's Qlib framework
 8. **Complete Stack** - Data → Training → Backtesting → Serving → API
 

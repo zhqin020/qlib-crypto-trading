@@ -141,7 +141,7 @@ A production-ready, AI-powered cryptocurrency trading platform built on Microsof
 - Interactive Swagger docs at `/docs`
 
 **Key Files:**
-- `src/ui/api.py` - FastAPI application
+- `src/ui/api_enhanced.py` - FastAPI application
 
 ### 8. MCP Server Integration ✅
 
@@ -217,8 +217,9 @@ A production-ready, AI-powered cryptocurrency trading platform built on Microsof
 ### 10. Documentation ✅
 
 **Comprehensive Docs:**
-- `README.md` - Full platform documentation (4000+ words)
-- `QUICKSTART.md` - 5-minute getting started guide
+- `README.md` - Full platform documentation (~1,400 words, verified 2025-10-07)
+- `QUICKSTART.md` - 5-minute getting started guide (~600 words)
+- Total documentation: ~17,500 words across all .md files
 - `DEPLOYMENT.md` - Production deployment guide
 - `PLATFORM_OVERVIEW.md` - This document
 - `LICENSE` - MIT license with disclaimer
@@ -398,6 +399,7 @@ make docker-up
 - **Issues**: GitHub Issues
 - **MCP Spec**: https://modelcontextprotocol.io
 - **Qlib Docs**: https://qlib.readthedocs.io
+- **Development History**: See docs/archive/ for historical decisions and lessons learned
 
 ## Platform Status
 

@@ -130,7 +130,7 @@ Start the API server:
 ./scripts/start_server.sh
 
 # Or directly
-python -m uvicorn src.ui.api:app --host 0.0.0.0 --port 5100 --reload
+python -m uvicorn src.ui.api_enhanced:app --host 0.0.0.0 --port 5100 --reload
 ```
 
 Access:
@@ -156,7 +156,7 @@ Add to your MCP client config (e.g., Claude Desktop):
   "mcpServers": {
     "qlib-trading": {
       "command": "python",
-      "args": ["-m", "src.mcp_server.server"],
+      "args": ["-m", "src.mcp_server"],
       "cwd": "/path/to/qlib-2",
       "env": {
         "PYTHONPATH": "/path/to/qlib-2/src"
@@ -480,6 +480,7 @@ MIT License - see LICENSE file
 - Issues: https://github.com/your-repo/qlib-2/issues
 - Documentation: See `/docs` directory
 - API Docs: http://localhost:5100/docs
+- Historical Documentation: See `/docs/archive/` for development history and lessons learned
 
 ## 🗺️ Roadmap
 

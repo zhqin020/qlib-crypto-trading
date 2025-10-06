@@ -10,4 +10,4 @@ echo "API will be available at http://localhost:5100"
 echo "API documentation at http://localhost:5100/docs"
 echo ""
 
-python -m uvicorn src.ui.api:app --host 0.0.0.0 --port 5100 --reload
+python -m uvicorn src.ui.api_enhanced:app --host 0.0.0.0 --port 5100 --reload
