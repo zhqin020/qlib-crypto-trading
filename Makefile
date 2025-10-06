@@ -64,8 +64,8 @@ mcp:
 docker-up:
 	docker-compose up -d
 	@echo "Services started. Access:"
-	@echo "  API: http://localhost:8000"
-	@echo "  Docs: http://localhost:8000/docs"
+	@echo "  API: http://localhost:5100"
+	@echo "  Docs: http://localhost:5100/docs"
 
 docker-down:
 	docker-compose down

@@ -2,7 +2,7 @@
   "mcpServers": {
     "qlib-trading": {
       "command": "python",
-      "args": ["-m", "src.mcp_server.server"],
+      "args": ["-m", "src.mcp_server"],
       "cwd": "/Users/chadwyatt/Code/trading/qlib-2",
       "env": {
         "PYTHONPATH": "/Users/chadwyatt/Code/trading/qlib-2/src"
