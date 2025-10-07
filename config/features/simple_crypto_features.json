@@ -1,0 +1,37 @@
+{
+  "name": "simple_crypto_features",
+  "dataset": "crypto_btc_daily",
+  "handler": "alpha158",
+  "description": "Minimal feature set for crypto with limited historical data",
+  "created_at": "2025-10-07T00:00:00",
+  "status": "active",
+  "config": {
+    "class": "DataHandlerLP",
+    "module_path": "qlib.data.dataset.handler",
+    "kwargs": {
+      "start_time": null,
+      "end_time": null,
+      "instruments": "all",
+      "data_loader": {
+        "class": "QlibDataLoader",
+        "module_path": "qlib.data.dataset.loader",
+        "kwargs": {
+          "config": {
+            "feature": [
+              "$close / Ref($close, 1) - 1",
+              "($high - $low) / $close",
+              "$volume / Mean($volume, 5)",
+              "Mean($close, 5) / $close - 1",
+              "Mean($close, 10) / $close - 1"
+            ],
+            "label": ["Ref($close, -1) / $close - 1"]
+          }
+        }
+      },
+      "infer_processors": [],
+      "learn_processors": [
+        {"class": "DropnaLabel"}
+      ]
+    }
+  }
+}

@@ -1,6 +1,6 @@
 {
-  "name": "alpha360_calendars",
-  "dataset": "calendars",
+  "name": "alpha360_crypto_btc_dailybob",
+  "dataset": "crypto_btc_dailybob",
   "handler": "alpha360",
   "config": {
     "class": "Alpha360",
@@ -40,6 +40,6 @@
       ]
     }
   },
-  "created_at": "2025-10-06 02:19:21.291033",
+  "created_at": "2025-10-06 09:48:25.202242",
   "status": "ready"
 }

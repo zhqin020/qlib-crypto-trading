@@ -29,4 +29,4 @@ ENV PYTHONPATH=/app/src
 ENV PYTHONUNBUFFERED=1
 
 # Default command (can be overridden)
-CMD ["python", "-m", "uvicorn", "src.ui.api:app", "--host", "0.0.0.0", "--port", "5100"]
+CMD ["python", "-m", "uvicorn", "src.ui.api_enhanced:app", "--host", "0.0.0.0", "--port", "5100"]

@@ -1,0 +1,27 @@
+{
+  "name": "alpha158_crypto_3year",
+  "dataset": "crypto_btc_daily",
+  "handler": "alpha158",
+  "description": "Alpha158 feature set for 3 years of BTC data",
+  "created_at": "2025-10-07T00:00:00",
+  "status": "active",
+  "config": {
+    "class": "Alpha158",
+    "module_path": "qlib.contrib.data.handler",
+    "kwargs": {
+      "start_time": null,
+      "end_time": null,
+      "fit_start_time": null,
+      "fit_end_time": null,
+      "instruments": "all",
+      "infer_processors": [
+        {"class": "RobustZScoreNorm", "kwargs": {"fields_group": "feature", "clip_outlier": true}},
+        {"class": "Fillna", "kwargs": {"fields_group": "feature"}}
+      ],
+      "learn_processors": [
+        {"class": "DropnaLabel"}
+      ],
+      "label": ["Ref($close, -1) / $close - 1"]
+    }
+  }
+}

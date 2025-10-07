@@ -2,27 +2,226 @@
 Enhanced FastAPI with real-time WebSocket support
 """
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, BackgroundTasks
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, validator, Field
 from typing import Optional, List, Dict, Any
 from pathlib import Path
+from contextlib import asynccontextmanager
 import logging
 import json
 import asyncio
+import re
 from datetime import datetime
 
 from .events import get_event_broadcaster
 from ..monitoring.process_monitor import monitor, ProcessInfo
+from .security import (
+    authenticate_websocket,
+    connection_manager,
+    check_message_size,
+    MAX_MESSAGE_SIZE,
+    HEARTBEAT_TIMEOUT
+)
 
 logger = logging.getLogger(__name__)
 
+
+# Security validation helpers
+def validate_dataset_name(name: str, max_length: int = 100) -> str:
+    """
+    Validate dataset name to prevent path traversal attacks.
+
+    Args:
+        name: Dataset name to validate
+        max_length: Maximum allowed length (default: 100)
+
+    Returns:
+        Validated dataset name
+
+    Raises:
+        HTTPException: If name is invalid or contains malicious patterns
+    """
+    if not name:
+        raise HTTPException(
+            status_code=400,
+            detail="Dataset name cannot be empty"
+        )
+
+    if len(name) > max_length:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Dataset name too long (max {max_length} characters)"
+        )
+
+    # Check for null bytes
+    if '\x00' in name:
+        raise HTTPException(
+            status_code=400,
+            detail="Dataset name contains invalid null byte"
+        )
+
+    # Check for path traversal patterns
+    if '..' in name or '/' in name or '\\' in name:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid dataset name: path traversal patterns not allowed"
+        )
+
+    # Whitelist: only alphanumeric, underscore, hyphen
+    if not re.match(r'^[a-zA-Z0-9_-]+$', name):
+        raise HTTPException(
+            status_code=400,
+            detail="Dataset name must contain only alphanumeric characters, underscores, and hyphens"
+        )
+
+    return name
+
+
+def validate_model_id(model_id: str, max_length: int = 200) -> str:
+    """
+    Validate model ID to prevent path traversal attacks.
+
+    Args:
+        model_id: Model ID to validate
+        max_length: Maximum allowed length (default: 200)
+
+    Returns:
+        Validated model ID
+
+    Raises:
+        HTTPException: If model_id is invalid or contains malicious patterns
+    """
+    if not model_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Model ID cannot be empty"
+        )
+
+    if len(model_id) > max_length:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Model ID too long (max {max_length} characters)"
+        )
+
+    # Check for null bytes
+    if '\x00' in model_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Model ID contains invalid null byte"
+        )
+
+    # Check for path traversal patterns
+    if '..' in model_id or '/' in model_id or '\\' in model_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid model ID: path traversal patterns not allowed"
+        )
+
+    return model_id
+
+
+def validate_process_id(process_id: str, max_length: int = 100) -> str:
+    """
+    Validate process ID to prevent injection attacks.
+
+    Args:
+        process_id: Process ID to validate
+        max_length: Maximum allowed length (default: 100)
+
+    Returns:
+        Validated process ID
+
+    Raises:
+        HTTPException: If process_id is invalid
+    """
+    if not process_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Process ID cannot be empty"
+        )
+
+    if len(process_id) > max_length:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Process ID too long (max {max_length} characters)"
+        )
+
+    # Check for null bytes
+    if '\x00' in process_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Process ID contains invalid null byte"
+        )
+
+    # Whitelist: only alphanumeric, underscore, hyphen
+    if not re.match(r'^[a-zA-Z0-9_-]+$', process_id):
+        raise HTTPException(
+            status_code=400,
+            detail="Process ID must contain only alphanumeric characters, underscores, and hyphens"
+        )
+
+    return process_id
+
+
+def validate_path_safety(resolved_path: Path, allowed_base: Path) -> Path:
+    """
+    Verify that a resolved path is within the allowed base directory.
+
+    Args:
+        resolved_path: The resolved absolute path to validate
+        allowed_base: The allowed base directory
+
+    Returns:
+        Validated path
+
+    Raises:
+        HTTPException: If path is outside allowed directory
+    """
+    try:
+        # Resolve both paths to absolute
+        resolved_path = resolved_path.resolve()
+        allowed_base = allowed_base.resolve()
+
+        # Check if resolved path is relative to allowed base
+        resolved_path.relative_to(allowed_base)
+
+        return resolved_path
+    except ValueError:
+        # relative_to() raises ValueError if path is not relative
+        raise HTTPException(
+            status_code=403,
+            detail="Access denied: path is outside allowed directory"
+        )
+
+
+# Lifespan context manager for startup/shutdown
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage application lifespan (startup/shutdown)"""
+    from ..utils.background_tasks import background_manager
+
+    # Startup
+    logger.info("Starting API server...")
+    await background_manager.start()
+    logger.info("Background tasks started")
+
+    yield
+
+    # Shutdown
+    logger.info("Shutting down API server...")
+    await background_manager.stop()
+    logger.info("Background tasks stopped")
+
+
+# Create FastAPI app with lifespan
 app = FastAPI(
     title="Qlib Crypto Trading Platform",
     description="AI-powered cryptocurrency trading platform with real-time updates",
-    version="2.0.0"
+    version="2.0.0",
+    lifespan=lifespan
 )
 
 # CORS middleware
@@ -47,6 +246,74 @@ except:
     pass  # Static dir might not exist yet
 
 
+# Validation helper functions
+def validate_dataset_exists(dataset_ref: str) -> Path:
+    """
+    Validate dataset exists and return its path.
+    Includes security validation to prevent path traversal.
+
+    Raises HTTPException if invalid or not found.
+    """
+    # First validate the dataset name format
+    dataset_ref = validate_dataset_name(dataset_ref)
+
+    project_root = Path(__file__).parent.parent.parent
+    qlib_base = project_root / "data" / "qlib"
+    qlib_dir = qlib_base / dataset_ref
+
+    # Verify path safety
+    validate_path_safety(qlib_dir, qlib_base)
+
+    if not qlib_dir.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Dataset '{dataset_ref}' not found. Available datasets can be fetched from GET /api/datasets"
+        )
+
+    if not qlib_dir.is_dir():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Dataset '{dataset_ref}' is not a directory"
+        )
+
+    # Check required subdirectories
+    required_dirs = ["calendars", "features", "instruments"]
+    missing_dirs = [d for d in required_dirs if not (qlib_dir / d).exists()]
+    if missing_dirs:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Dataset '{dataset_ref}' is incomplete: missing {', '.join(missing_dirs)} director{'ies' if len(missing_dirs) > 1 else 'y'}"
+        )
+
+    return qlib_dir
+
+
+def validate_model_exists(model_id: str) -> Path:
+    """
+    Validate model exists and return its path.
+    Includes security validation to prevent path traversal.
+
+    Raises HTTPException if invalid or not found.
+    """
+    # First validate the model_id format
+    model_id = validate_model_id(model_id)
+
+    project_root = Path(__file__).parent.parent.parent
+    models_base = project_root / "models" / "trained"
+    model_file = models_base / f"{model_id}.pkl"
+
+    # Verify path safety
+    validate_path_safety(model_file, models_base)
+
+    if not model_file.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Model '{model_id}' not found. Train a model first or check the model ID."
+        )
+
+    return model_file
+
+
 # Request models
 class DataDownloadRequest(BaseModel):
     symbols: List[str]
@@ -56,20 +323,87 @@ class DataDownloadRequest(BaseModel):
     provider: str = "binance"
 
 class TrainModelRequest(BaseModel):
-    dataset: str
-    feature_handler: str = "alpha158"
-    model_handler: str = "lightgbm"
+    dataset: str = Field(..., min_length=1, max_length=100)
+    feature_handler: str = Field(default="alpha158", pattern="^(alpha158|alpha360)$")
+    model_handler: str = Field(default="lightgbm", pattern="^(lightgbm|xgboost|lstm|transformer|gru)$")
     params: Optional[Dict[str, Any]] = None
 
+    @validator('dataset')
+    def validate_dataset(cls, v):
+        # Prevent path traversal
+        if '..' in v or '/' in v or '\\' in v:
+            raise ValueError('Invalid dataset name: path traversal not allowed')
+        if not v.replace('_', '').replace('-', '').isalnum():
+            raise ValueError('Dataset name must contain only alphanumeric characters, underscores, and hyphens')
+        return v
+
+    @validator('params')
+    def validate_params(cls, v):
+        if v is None:
+            return {}
+        # Limit params size to prevent excessive memory usage
+        if len(json.dumps(v)) > 10000:  # 10KB limit
+            raise ValueError('Parameters too large (max 10KB)')
+        return v
+
 class BacktestRequest(BaseModel):
-    model_id: str
-    dataset: str
-    costs: str = "medium"
-    rebalance: str = "weekly"
+    model_id: str = Field(..., min_length=1, max_length=200)
+    dataset: str = Field(..., min_length=1, max_length=100)
+    costs: str = Field(default="medium", pattern="^(low|medium|high)$")
+    rebalance: str = Field(default="weekly", pattern="^(daily|weekly|monthly)$")
+
+    @validator('model_id')
+    def validate_model_id(cls, v):
+        # Prevent path traversal
+        if '..' in v or '/' in v or '\\' in v:
+            raise ValueError('Invalid model_id: path traversal not allowed')
+        return v
+
+    @validator('dataset')
+    def validate_dataset(cls, v):
+        # Prevent path traversal
+        if '..' in v or '/' in v or '\\' in v:
+            raise ValueError('Invalid dataset name: path traversal not allowed')
+        if not v.replace('_', '').replace('-', '').isalnum():
+            raise ValueError('Dataset name must contain only alphanumeric characters, underscores, and hyphens')
+        return v
 
 class PredictionRequest(BaseModel):
-    model_id: str
-    dataset: str
+    model_id: str = Field(..., min_length=1, max_length=200)
+    dataset: str = Field(..., min_length=1, max_length=100)
+    prediction_date: Optional[str] = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+
+    @validator('model_id')
+    def validate_model_id(cls, v):
+        # Prevent path traversal
+        if '..' in v or '/' in v or '\\' in v:
+            raise ValueError('Invalid model_id: path traversal not allowed')
+        return v
+
+    @validator('dataset')
+    def validate_dataset(cls, v):
+        # Prevent path traversal
+        if '..' in v or '/' in v or '\\' in v:
+            raise ValueError('Invalid dataset name: path traversal not allowed')
+        if not v.replace('_', '').replace('-', '').isalnum():
+            raise ValueError('Dataset name must contain only alphanumeric characters, underscores, and hyphens')
+        return v
+
+    @validator('prediction_date')
+    def validate_prediction_date(cls, v):
+        if v is None:
+            return None
+        try:
+            date = datetime.strptime(v, "%Y-%m-%d")
+            # Don't allow future dates beyond 1 year
+            from datetime import timedelta
+            if date > datetime.now() + timedelta(days=365):
+                raise ValueError('Prediction date too far in future (max 1 year ahead)')
+            return v
+        except ValueError as e:
+            if 'does not match format' in str(e):
+                raise ValueError(f'Invalid date format. Expected YYYY-MM-DD')
+            raise
 
 
 # Process response models
@@ -102,21 +436,147 @@ class ProcessResponse(BaseModel):
 # WebSocket endpoint for real-time updates
 @app.websocket("/ws/events")
 async def websocket_events(websocket: WebSocket):
-    """WebSocket endpoint for real-time platform events"""
-    await broadcaster.connect(websocket)
+    """
+    WebSocket endpoint for real-time platform events
+
+    Authentication: Requires API key in Authorization header or api_key query param
+    Rate Limiting: 100 messages/minute per user
+    Connection Limit: 10 concurrent connections per user
+    Message Size: Max 1MB per message
+    Heartbeat: 60s timeout
+    """
+    user_id = None
+
+    # Authenticate connection
+    try:
+        user_id = await authenticate_websocket(websocket)
+    except HTTPException as e:
+        try:
+            await websocket.close(code=1008, reason=e.detail)
+        except:
+            pass
+        return
+
+    # Add connection
+    if not connection_manager.add_connection(user_id, websocket):
+        try:
+            await websocket.close(
+                code=1008,
+                reason=f"Maximum connections exceeded"
+            )
+        except:
+            pass
+        return
+
+    # Register with broadcaster
+    try:
+        await broadcaster.connect(websocket)
+    except Exception as e:
+        logger.error(f"Failed to register with broadcaster: {e}")
+        connection_manager.remove_connection(user_id, websocket)
+        try:
+            await websocket.close(code=1011, reason="Internal error")
+        except:
+            pass
+        return
+
+    last_message = None  # Track for duplicate prevention
+
     try:
         while True:
-            # Keep connection alive and receive client messages
-            data = await websocket.receive_text()
-            # Echo back or handle client commands
-            if data == "ping":
-                await websocket.send_json({"type": "pong"})
-    except WebSocketDisconnect:
-        broadcaster.disconnect(websocket)
-    except Exception as e:
-        logger.error(f"WebSocket error: {e}")
-        broadcaster.disconnect(websocket)
+            # Check heartbeat timeout
+            if not connection_manager.is_connection_alive(user_id):
+                logger.warning(f"Heartbeat timeout for user {user_id}")
+                break
 
+            # Keep connection alive and receive client messages
+            try:
+                data = await asyncio.wait_for(
+                    websocket.receive_text(),
+                    timeout=1.0
+                )
+
+                # Check message size
+                if not await check_message_size(data):
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": f"Message exceeds maximum size of {MAX_MESSAGE_SIZE} bytes",
+                        "timestamp": datetime.now().isoformat()
+                    })
+                    continue
+
+                # Check rate limit
+                if not connection_manager.check_rate_limit(user_id):
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": "Rate limit exceeded. Max 100 messages per minute.",
+                        "timestamp": datetime.now().isoformat()
+                    })
+                    continue
+
+                # Update heartbeat
+                connection_manager.update_heartbeat(user_id)
+
+                # Parse message
+                try:
+                    message_data = json.loads(data)
+                    message_type = message_data.get("type")
+
+                    # Only send if changed (duplicate prevention)
+                    if data != last_message:
+                        if message_type == "ping":
+                            await websocket.send_json({
+                                "type": "pong",
+                                "timestamp": datetime.now().isoformat()
+                            })
+                            last_message = data
+                        else:
+                            # Unknown message type - log but don't crash
+                            logger.debug(f"Unknown message type from user {user_id}: {message_type}")
+
+                except json.JSONDecodeError:
+                    # Handle plain text for backward compatibility
+                    if data == "ping" and data != last_message:
+                        await websocket.send_json({
+                            "type": "pong",
+                            "timestamp": datetime.now().isoformat()
+                        })
+                        last_message = data
+                    else:
+                        # Send error for invalid JSON
+                        try:
+                            await websocket.send_json({
+                                "type": "error",
+                                "message": "Invalid JSON format. Expected JSON object or 'ping' text.",
+                                "timestamp": datetime.now().isoformat()
+                            })
+                        except:
+                            # If sending error fails, give up
+                            break
+
+            except asyncio.TimeoutError:
+                # No message received, continue
+                pass
+            except Exception as e:
+                logger.error(f"Error receiving message from user {user_id}: {e}")
+                break
+
+    except WebSocketDisconnect:
+        logger.info(f"User {user_id} disconnected normally from /ws/events")
+    except Exception as e:
+        logger.error(f"WebSocket error for user {user_id}: {e}", exc_info=True)
+        try:
+            await websocket.close(
+                code=1011,
+                reason="Server error occurred. Please reconnect."
+            )
+        except:
+            pass
+    finally:
+        # Always cleanup
+        broadcaster.disconnect(websocket)
+        if user_id:
+            connection_manager.remove_connection(user_id, websocket)
 
 # Enhanced API endpoints with broadcasting
 @app.get("/")
@@ -181,15 +641,22 @@ async def list_datasets():
 
 
 @app.post("/api/data/download")
-async def download_data(request: DataDownloadRequest, background_tasks: BackgroundTasks):
+async def download_data(request: DataDownloadRequest):
     """Download crypto market data"""
+    import uuid
     from ..data_pipeline.market_data import download_crypto_universe
+
+    # Generate process ID
+    process_id = f"download_{uuid.uuid4().hex[:8]}"
 
     # Notify start
     await broadcaster.broadcast_notification("info", f"Starting data download for {len(request.symbols)} symbols")
 
     async def download_task():
         try:
+            await monitor.start_process(process_id, "download", total_steps=1)
+            await monitor.update_progress(process_id, 10.0, f"Downloading {len(request.symbols)} symbols", 1)
+
             result = await download_crypto_universe(
                 symbols=request.symbols,
                 start_date=request.start_date,
@@ -197,23 +664,65 @@ async def download_data(request: DataDownloadRequest, background_tasks: Backgrou
                 interval=request.interval,
                 provider=request.provider
             )
+
+            await monitor.complete_process(process_id, {
+                "symbols": list(result.keys()),
+                "count": len(result)
+            })
             await broadcaster.broadcast_data_update("download_complete", {
                 "symbols": list(result.keys()),
                 "count": len(result)
             })
             await broadcaster.broadcast_notification("success", f"Downloaded data for {len(result)} symbols")
+        except asyncio.CancelledError:
+            logger.info(f"Download task cancelled: {process_id}")
+            await monitor.fail_process(process_id, "Cancelled by user")
+            raise
         except Exception as e:
+            await monitor.fail_process(process_id, str(e))
             await broadcaster.broadcast_notification("error", f"Download failed: {str(e)}")
 
-    background_tasks.add_task(download_task)
+    # Create and register task for cancellation support
+    task = asyncio.create_task(download_task())
+    await monitor.register_task(process_id, task)
 
-    return {"status": "started", "symbols": request.symbols}
+    return {"status": "started", "process_id": process_id, "symbols": request.symbols}
 
 
 @app.post("/api/data/convert")
-async def convert_data(dataset: str, freq: str = "1d", background_tasks: BackgroundTasks = None):
-    """Convert CSV data to Qlib format"""
+async def convert_data(dataset: str, freq: str = "1d"):
+    """
+    Convert CSV data to Qlib format with comprehensive security validation.
+
+    Args:
+        dataset: Dataset name (alphanumeric, underscore, hyphen only)
+        freq: Frequency (default: "1d")
+
+    Raises:
+        HTTPException 400: Invalid dataset name or parameters
+        HTTPException 403: Path traversal attempt detected
+        HTTPException 500: Conversion failed
+    """
     from ..data_pipeline.snapshot import create_snapshot
+
+    # Validate dataset name to prevent path traversal
+    dataset = validate_dataset_name(dataset)
+
+    # Validate frequency parameter (whitelist)
+    valid_freqs = ["1d", "1h", "4h", "1w", "1M"]
+    if freq not in valid_freqs:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid frequency. Allowed values: {', '.join(valid_freqs)}"
+        )
+
+    # Verify path safety - ensure the resolved path is within data/qlib/
+    project_root = Path(__file__).parent.parent.parent
+    qlib_base = project_root / "data" / "qlib"
+    dataset_path = qlib_base / dataset
+
+    # Validate that resolved path is within allowed directory
+    validate_path_safety(dataset_path, qlib_base)
 
     await broadcaster.broadcast_notification("info", f"Converting dataset: {dataset}")
 
@@ -251,11 +760,18 @@ async def list_models():
 
 
 @app.post("/api/models/train")
-async def train_model(request: TrainModelRequest, background_tasks: BackgroundTasks):
-    """Train a new model"""
+async def train_model(request: TrainModelRequest):
+    """Train a new model with comprehensive validation"""
     import uuid
     from ..models.trainer import train_model as train
     from ..data_pipeline.features import create_feature_set
+
+    # Validate dataset exists before starting background task
+    try:
+        validate_dataset_exists(request.dataset)
+    except HTTPException as e:
+        # Return validation error immediately
+        raise e
 
     # Generate process ID
     process_id = f"training_{uuid.uuid4().hex[:8]}"
@@ -295,33 +811,78 @@ async def train_model(request: TrainModelRequest, background_tasks: BackgroundTa
             else:
                 await monitor.fail_process(process_id, result['error'])
                 await broadcaster.broadcast_notification("error", f"Training failed: {result['error']}")
+        except asyncio.CancelledError:
+            logger.info(f"Training task cancelled: {process_id}")
+            await monitor.fail_process(process_id, "Cancelled by user")
+            raise
         except Exception as e:
             await monitor.fail_process(process_id, str(e))
             await broadcaster.broadcast_notification("error", f"Training error: {str(e)}")
 
-    background_tasks.add_task(train_task)
+    # Create and register task for cancellation support
+    task = asyncio.create_task(train_task())
+    await monitor.register_task(process_id, task)
 
-    return {"status": "started", "process_id": process_id, "dataset": request.dataset, "model": request.model_handler}
+    return {
+        "status": "started",
+        "process_id": process_id,
+        "dataset": request.dataset,
+        "feature_handler": request.feature_handler,
+        "model_handler": request.model_handler,
+        "message": f"Training {request.model_handler} model on {request.dataset} dataset"
+    }
 
 
 @app.get("/api/models/{model_id}")
 async def get_model(model_id: str):
-    """Get model details"""
+    """
+    Get model details with comprehensive security validation.
+
+    Args:
+        model_id: Model identifier
+
+    Raises:
+        HTTPException 400: Invalid model_id format
+        HTTPException 403: Path traversal attempt
+        HTTPException 404: Model not found
+    """
+    # Validate model_id format (prevent path traversal)
+    model_id = validate_model_id(model_id)
+
     project_root = Path(__file__).parent.parent.parent
-    meta_file = project_root / "models" / "trained" / f"{model_id}_meta.json"
+    models_base = project_root / "models" / "trained"
+    meta_file = models_base / f"{model_id}_meta.json"
+
+    # Verify path safety
+    validate_path_safety(meta_file, models_base)
 
     if not meta_file.exists():
-        raise HTTPException(status_code=404, detail="Model not found")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Model '{model_id}' not found"
+        )
 
     with open(meta_file) as f:
         return json.load(f)
 
 
 @app.post("/api/backtests/run")
-async def run_backtest(request: BacktestRequest, background_tasks: BackgroundTasks):
-    """Run backtest for a model"""
+async def run_backtest(request: BacktestRequest):
+    """Run backtest for a model with comprehensive validation"""
     import uuid
     from ..backtesting.engine import run_backtest as run_bt
+
+    # Validate dataset exists
+    try:
+        validate_dataset_exists(request.dataset)
+    except HTTPException as e:
+        raise e
+
+    # Validate model exists
+    try:
+        validate_model_exists(request.model_id)
+    except HTTPException as e:
+        raise e
 
     # Generate process ID
     process_id = f"backtest_{uuid.uuid4().hex[:8]}"
@@ -352,13 +913,27 @@ async def run_backtest(request: BacktestRequest, background_tasks: BackgroundTas
             else:
                 await monitor.fail_process(process_id, result['error'])
                 await broadcaster.broadcast_notification("error", f"Backtest failed: {result['error']}")
+        except asyncio.CancelledError:
+            logger.info(f"Backtest task cancelled: {process_id}")
+            await monitor.fail_process(process_id, "Cancelled by user")
+            raise
         except Exception as e:
             await monitor.fail_process(process_id, str(e))
             await broadcaster.broadcast_notification("error", f"Backtest error: {str(e)}")
 
-    background_tasks.add_task(backtest_task)
+    # Create and register task for cancellation support
+    task = asyncio.create_task(backtest_task())
+    await monitor.register_task(process_id, task)
 
-    return {"status": "started", "process_id": process_id, "model_id": request.model_id}
+    return {
+        "status": "started",
+        "process_id": process_id,
+        "model_id": request.model_id,
+        "dataset": request.dataset,
+        "costs": request.costs,
+        "rebalance": request.rebalance,
+        "message": f"Backtest started for model {request.model_id}"
+    }
 
 
 @app.get("/api/backtests")
@@ -379,10 +954,25 @@ async def list_backtests():
 
 
 @app.post("/api/predictions/generate")
-async def generate_predictions(request: PredictionRequest, background_tasks: BackgroundTasks):
-    """Generate predictions for today"""
+async def generate_predictions(request: PredictionRequest):
+    """Generate predictions with comprehensive validation"""
     import uuid
     from ..serving.predictor import predict_today
+
+    # Validate dataset exists
+    try:
+        validate_dataset_exists(request.dataset)
+    except HTTPException as e:
+        raise e
+
+    # Validate model exists
+    try:
+        validate_model_exists(request.model_id)
+    except HTTPException as e:
+        raise e
+
+    # Use provided date or today
+    prediction_date = request.prediction_date or datetime.now().strftime("%Y-%m-%d")
 
     # Generate process ID
     process_id = f"prediction_{uuid.uuid4().hex[:8]}"
@@ -410,13 +1000,26 @@ async def generate_predictions(request: PredictionRequest, background_tasks: Bac
             else:
                 await monitor.fail_process(process_id, result['error'])
                 await broadcaster.broadcast_notification("error", f"Prediction failed: {result['error']}")
+        except asyncio.CancelledError:
+            logger.info(f"Prediction task cancelled: {process_id}")
+            await monitor.fail_process(process_id, "Cancelled by user")
+            raise
         except Exception as e:
             await monitor.fail_process(process_id, str(e))
             await broadcaster.broadcast_notification("error", f"Prediction error: {str(e)}")
 
-    background_tasks.add_task(predict_task)
+    # Create and register task for cancellation support
+    task = asyncio.create_task(predict_task())
+    await monitor.register_task(process_id, task)
 
-    return {"status": "started", "process_id": process_id, "model_id": request.model_id}
+    return {
+        "status": "started",
+        "process_id": process_id,
+        "model_id": request.model_id,
+        "dataset": request.dataset,
+        "prediction_date": prediction_date,
+        "message": f"Generating predictions for {prediction_date}"
+    }
 
 
 @app.get("/api/predictions")
@@ -467,28 +1070,179 @@ async def get_quote(symbol: str, provider: str = "binance"):
 
 @app.websocket("/ws/market-data")
 async def websocket_market_data(websocket: WebSocket):
-    """WebSocket endpoint for real-time market data"""
-    await websocket.accept()
+    """
+    WebSocket endpoint for real-time market data
+
+    Authentication: Requires API key in Authorization header or api_key query param
+    Rate Limiting: 100 messages/minute per user
+    Connection Limit: 10 concurrent connections per user
+    Message Size: Max 1MB per message
+    Heartbeat: 60s timeout
+    """
+    user_id = None
+
+    # Authenticate connection
+    try:
+        user_id = await authenticate_websocket(websocket)
+    except HTTPException as e:
+        try:
+            await websocket.close(code=1008, reason=e.detail)
+        except:
+            pass
+        return
+
+    # Add connection
+    if not connection_manager.add_connection(user_id, websocket):
+        try:
+            await websocket.close(code=1008, reason="Maximum connections exceeded")
+        except:
+            pass
+        return
+
+    # Accept connection explicitly
+    try:
+        await websocket.accept()
+    except Exception as e:
+        logger.error(f"Failed to accept WebSocket connection for user {user_id}: {e}")
+        connection_manager.remove_connection(user_id, websocket)
+        return
+
+    symbols = []
+    last_symbols_state = None  # Track for duplicate detection
 
     try:
         while True:
-            data = await websocket.receive_json()
-            symbols = data.get("symbols", [])
+            # Check heartbeat timeout
+            if not connection_manager.is_connection_alive(user_id):
+                logger.warning(f"Heartbeat timeout for user {user_id}")
+                break
 
-            from ..data_pipeline.market_data import get_quotes_batch
-            quotes = await get_quotes_batch(symbols)
+            # Check for client messages with short timeout
+            try:
+                message = await asyncio.wait_for(
+                    websocket.receive_text(),
+                    timeout=1.0
+                )
 
-            await websocket.send_json({
-                "type": "quotes",
-                "data": quotes
-            })
+                # Check message size
+                if not await check_message_size(message):
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": f"Message exceeds maximum size of {MAX_MESSAGE_SIZE} bytes",
+                        "timestamp": datetime.now().isoformat()
+                    })
+                    continue
 
-            await asyncio.sleep(1)  # Rate limiting
+                # Check rate limit
+                if not connection_manager.check_rate_limit(user_id):
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": "Rate limit exceeded. Max 100 messages per minute.",
+                        "timestamp": datetime.now().isoformat()
+                    })
+                    continue
+
+                # Update heartbeat
+                connection_manager.update_heartbeat(user_id)
+
+                try:
+                    data = json.loads(message)
+                    # Handle ping/pong keepalive
+                    if data.get("type") == "ping":
+                        await websocket.send_json({
+                            "type": "pong",
+                            "timestamp": datetime.now().isoformat()
+                        })
+                    # Handle symbol subscription updates
+                    elif "symbols" in data:
+                        new_symbols = data.get("symbols", [])
+
+                        # Validate symbols format
+                        if isinstance(new_symbols, list) and all(isinstance(s, str) for s in new_symbols):
+                            # Defensive copy to prevent race conditions
+                            symbols = new_symbols.copy()
+                            logger.info(f"User {user_id} subscribed to {len(symbols)} symbols")
+                        else:
+                            await websocket.send_json({
+                                "type": "error",
+                                "message": "symbols must be a list of strings",
+                                "timestamp": datetime.now().isoformat()
+                            })
+
+                except json.JSONDecodeError as e:
+                    # Handle plain text ping for backward compatibility
+                    if message == "ping":
+                        await websocket.send_json({
+                            "type": "pong",
+                            "timestamp": datetime.now().isoformat()
+                        })
+                    else:
+                        # Send error response
+                        try:
+                            await websocket.send_json({
+                                "type": "error",
+                                "message": f"Invalid JSON: {str(e)}",
+                                "timestamp": datetime.now().isoformat()
+                            })
+                        except:
+                            # If sending error fails, continue
+                            pass
+
+            except asyncio.TimeoutError:
+                pass  # No message, continue with updates
+            except Exception as e:
+                logger.error(f"Error receiving message from user {user_id}: {e}")
+                break
+
+            # Send quotes if symbols are subscribed and changed
+            current_symbols_state = ",".join(sorted(symbols))
+            if symbols and current_symbols_state != last_symbols_state:
+                try:
+                    from ..data_pipeline.market_data import get_quotes_batch
+                    quotes = await get_quotes_batch(symbols)
+
+                    try:
+                        await websocket.send_json({
+                            "type": "quotes",
+                            "data": quotes,
+                            "timestamp": datetime.now().isoformat()
+                        })
+                        last_symbols_state = current_symbols_state
+                    except Exception as send_error:
+                        logger.error(f"Failed to send quotes to user {user_id}: {send_error}")
+                        # Don't break, continue trying
+
+                except Exception as fetch_error:
+                    logger.error(f"Failed to fetch quotes for user {user_id}: {fetch_error}")
+                    # Graceful degradation - send error but continue operation
+                    try:
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": f"Failed to fetch quotes: {str(fetch_error)}",
+                            "timestamp": datetime.now().isoformat()
+                        })
+                    except:
+                        # If even error send fails, continue
+                        pass
+
+            # Rate limiting
+            await asyncio.sleep(1)
 
     except WebSocketDisconnect:
-        pass
+        logger.info(f"User {user_id} disconnected normally from /ws/market-data")
     except Exception as e:
-        logger.error(f"WebSocket error: {e}")
+        logger.error(f"WebSocket error for user {user_id}: {e}", exc_info=True)
+        try:
+            await websocket.close(
+                code=1011,
+                reason="Server error occurred. Please reconnect."
+            )
+        except:
+            pass
+    finally:
+        # Always cleanup
+        if user_id:
+            connection_manager.remove_connection(user_id, websocket)
 
 
 # Process monitoring endpoints
@@ -514,26 +1268,45 @@ async def get_running_processes():
 
 @app.get("/api/processes/{process_id}")
 async def get_process(process_id: str):
-    """Get specific process by ID"""
+    """Get specific process by ID with security validation"""
+    # Validate process_id format (prevent injection)
+    process_id = validate_process_id(process_id)
+
     process = await monitor.get_process(process_id)
     if not process:
-        raise HTTPException(status_code=404, detail=f"Process {process_id} not found")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Process '{process_id}' not found"
+        )
     return process.to_dict()
 
 
 @app.delete("/api/processes/{process_id}")
 async def cancel_process(process_id: str):
-    """Cancel a running process"""
+    """Cancel a running process with security validation"""
+    # Validate process_id format (prevent injection)
+    process_id = validate_process_id(process_id)
+
     try:
         await monitor.cancel_process(process_id)
-        return {"status": "cancelled", "process_id": process_id}
+        return {
+            "status": "cancelled",
+            "process_id": process_id,
+            "message": f"Process '{process_id}' has been cancelled"
+        }
     except ValueError as e:
         error_msg = str(e)
         # Distinguish between 404 (not found) and 400 (invalid operation)
         if "not found" in error_msg:
-            raise HTTPException(status_code=404, detail=error_msg)
+            raise HTTPException(
+                status_code=404,
+                detail=f"Process '{process_id}' not found"
+            )
         else:
-            raise HTTPException(status_code=400, detail=error_msg)
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot cancel process: {error_msg}"
+            )
 
 
 @app.get("/api/processes/{process_id}/logs")
@@ -556,6 +1329,19 @@ async def get_process_logs(process_id: str, limit: int = 100):
             ]
         }
     """
+    # Validate process_id format (prevent injection)
+    process_id = validate_process_id(process_id)
+
+    # Validate limit parameter
+    if limit < 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Limit must be at least 1"
+        )
+    if limit > 1000:
+        # Clamp to maximum instead of failing
+        limit = 1000
+
     process = await monitor.get_process(process_id)
 
     if not process:
@@ -564,9 +1350,7 @@ async def get_process_logs(process_id: str, limit: int = 100):
             detail=f"Process '{process_id}' not found"
         )
 
-    # Limit to max 1000 logs
-    limit = min(limit, 1000)
-
+    # Return limited logs (most recent)
     logs = [
         {
             "timestamp": log.timestamp,
@@ -576,31 +1360,174 @@ async def get_process_logs(process_id: str, limit: int = 100):
         for log in process.logs[-limit:]
     ]
 
-    return {"logs": logs}
+    return {
+        "logs": logs,
+        "total_logs": len(process.logs),
+        "returned_logs": len(logs)
+    }
 
 
 @app.websocket("/ws/processes")
 async def websocket_processes(websocket: WebSocket):
-    """WebSocket endpoint for real-time process updates - ALL processes"""
-    await websocket.accept()
+    """
+    WebSocket endpoint for real-time process updates - ALL processes (optimized)
+
+    Authentication: Requires API key in Authorization header or api_key query param
+    Rate Limiting: 100 messages/minute per user
+    Connection Limit: 10 concurrent connections per user
+    Message Size: Max 1MB per message
+    Heartbeat: 60s timeout
+    """
+    user_id = None
+
+    # Authenticate connection
+    try:
+        user_id = await authenticate_websocket(websocket)
+    except HTTPException as e:
+        try:
+            await websocket.close(code=1008, reason=e.detail)
+        except:
+            pass
+        return
+
+    # Add connection
+    if not connection_manager.add_connection(user_id, websocket):
+        try:
+            await websocket.close(code=1008, reason="Maximum connections exceeded")
+        except:
+            pass
+        return
+
+    # Accept connection explicitly
+    try:
+        await websocket.accept()
+    except Exception as e:
+        logger.error(f"Failed to accept WebSocket connection for user {user_id}: {e}")
+        connection_manager.remove_connection(user_id, websocket)
+        return
+
+    import time
+    import hashlib
+
+    # Track last update to avoid redundant sends
+    last_state_hash = None
+    last_update_time = time.monotonic()  # Use monotonic clock
+
+    def compute_state_hash(processes):
+        """Compute hash of all process states to detect changes"""
+        state_str = json.dumps([
+            (p.process_id, p.status.value, p.metrics.progress_percent)
+            for p in processes
+        ], sort_keys=True)
+        return hashlib.md5(state_str.encode()).hexdigest()
 
     try:
         while True:
+            # Check heartbeat timeout
+            if not connection_manager.is_connection_alive(user_id):
+                logger.warning(f"Heartbeat timeout for user {user_id}")
+                break
+
+            # Check for client messages (ping/pong keepalive)
+            try:
+                message = await asyncio.wait_for(
+                    websocket.receive_text(),
+                    timeout=0.1
+                )
+
+                # Check message size
+                if not await check_message_size(message):
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": f"Message exceeds maximum size of {MAX_MESSAGE_SIZE} bytes",
+                        "timestamp": datetime.now().isoformat()
+                    })
+                    continue
+
+                # Check rate limit
+                if not connection_manager.check_rate_limit(user_id):
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": "Rate limit exceeded. Max 100 messages per minute.",
+                        "timestamp": datetime.now().isoformat()
+                    })
+                    continue
+
+                # Update heartbeat
+                connection_manager.update_heartbeat(user_id)
+
+                try:
+                    data = json.loads(message)
+                    if data.get("type") == "ping":
+                        await websocket.send_json({
+                            "type": "pong",
+                            "timestamp": datetime.now().isoformat()
+                        })
+                except json.JSONDecodeError:
+                    # Handle plain text ping
+                    if message == "ping":
+                        await websocket.send_json({
+                            "type": "pong",
+                            "timestamp": datetime.now().isoformat()
+                        })
+            except asyncio.TimeoutError:
+                pass  # No message, continue with updates
+            except Exception as e:
+                logger.error(f"Error receiving message from user {user_id}: {e}")
+                break
+
             # Send current process states
-            processes = await monitor.get_all_processes()
-            await websocket.send_json({
-                "type": "process_update",
-                "processes": [p.to_dict() for p in processes],
-                "timestamp": datetime.now().isoformat()
-            })
+            try:
+                processes = await monitor.get_all_processes()
+                current_time = time.monotonic()
+
+                # Compute state hash to detect actual changes
+                current_hash = compute_state_hash(processes)
+
+                # Only send if state changed or 5 seconds passed (cache invalidation)
+                if current_hash != last_state_hash or (current_time - last_update_time) > 5.0:
+                    try:
+                        await websocket.send_json({
+                            "type": "process_update",
+                            "processes": [p.to_dict() for p in processes],
+                            "timestamp": datetime.now().isoformat()
+                        })
+                        last_state_hash = current_hash
+                        last_update_time = current_time
+                    except Exception as send_error:
+                        logger.error(f"Failed to send process update to user {user_id}: {send_error}")
+                        # Don't break, continue trying
+
+            except Exception as fetch_error:
+                logger.error(f"Failed to get processes for user {user_id}: {fetch_error}")
+                # Graceful degradation - send error but continue
+                try:
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": "Failed to retrieve process data",
+                        "timestamp": datetime.now().isoformat()
+                    })
+                except:
+                    pass
 
             # Wait before next update
             await asyncio.sleep(1)
 
     except WebSocketDisconnect:
-        pass
+        logger.info(f"User {user_id} disconnected normally from /ws/processes")
     except Exception as e:
-        logger.error(f"WebSocket error: {e}")
+        logger.error(f"WebSocket error for user {user_id}: {e}", exc_info=True)
+        try:
+            await websocket.close(
+                code=1011,
+                reason="Server error occurred. Please reconnect."
+            )
+        except:
+            pass
+    finally:
+        # Always cleanup
+        if user_id:
+            connection_manager.remove_connection(user_id, websocket)
 
 
 @app.websocket("/ws/processes/{process_id}")
@@ -610,6 +1537,12 @@ async def websocket_process_updates(websocket: WebSocket, process_id: str):
 
     Sends process updates every 500ms while the process is running.
     Automatically closes when process completes, fails, or is cancelled.
+
+    Authentication: Requires API key in Authorization header or api_key query param
+    Rate Limiting: 100 messages/minute per user
+    Connection Limit: 10 concurrent connections per user
+    Message Size: Max 1MB per message
+    Heartbeat: 60s timeout
 
     Protocol:
         Client -> Server: {"type": "ping"} (keepalive)
@@ -631,7 +1564,20 @@ async def websocket_process_updates(websocket: WebSocket, process_id: str):
     Args:
         process_id: Unique process identifier
     """
-    await websocket.accept()
+    # Authenticate connection
+    try:
+        user_id = await authenticate_websocket(websocket)
+    except HTTPException as e:
+        await websocket.close(code=1008, reason=e.detail)
+        return
+
+    # Add connection
+    if not connection_manager.add_connection(user_id, websocket):
+        await websocket.close(code=1008, reason="Maximum connections exceeded")
+        return
+
+    # Validate process_id
+    process_id = validate_process_id(process_id)
 
     try:
         # First, verify process exists
@@ -642,6 +1588,7 @@ async def websocket_process_updates(websocket: WebSocket, process_id: str):
                 "message": f"Process '{process_id}' not found"
             })
             await websocket.close()
+            connection_manager.remove_connection(user_id, websocket)
             return
 
         # Send initial state
@@ -658,6 +1605,26 @@ async def websocket_process_updates(websocket: WebSocket, process_id: str):
                     websocket.receive_text(),
                     timeout=0.1
                 )
+
+                # Check message size
+                if not await check_message_size(message):
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": f"Message exceeds maximum size of {MAX_MESSAGE_SIZE} bytes"
+                    })
+                    continue
+
+                # Check rate limit
+                if not connection_manager.check_rate_limit(user_id):
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": "Rate limit exceeded. Max 100 messages per minute."
+                    })
+                    continue
+
+                # Update heartbeat
+                connection_manager.update_heartbeat(user_id)
+
                 data = json.loads(message)
                 if data.get("type") == "ping":
                     await websocket.send_json({"type": "pong"})
@@ -692,8 +1659,10 @@ async def websocket_process_updates(websocket: WebSocket, process_id: str):
 
     except WebSocketDisconnect:
         logger.info(f"Client disconnected from process {process_id}")
+        connection_manager.remove_connection(user_id, websocket)
     except Exception as e:
         logger.error(f"WebSocket error for process {process_id}: {e}")
+        connection_manager.remove_connection(user_id, websocket)
         try:
             await websocket.send_json({
                 "type": "error",
