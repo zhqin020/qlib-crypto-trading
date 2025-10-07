@@ -32,15 +32,18 @@ async def create_snapshot(
     Returns:
         Snapshot metadata
     """
-    # Generate process ID
-    process_id = f"download_{uuid.uuid4().hex[:8]}"
+    # Generate process ID with timestamp to prevent collisions
+    import time
+    process_id = f"download_{int(time.time() * 1000)}_{uuid.uuid4().hex[:6]}"
 
     # Total steps: init, generate_calendars, extract_freq, convert_data, save_meta
     total_steps = 5
 
+    process_started = False
     try:
         # Start process monitoring
         await monitor.start_process(process_id, "download", total_steps=total_steps)
+        process_started = True
 
         from .official_qlib_converter import convert_crypto_data_official
         from .crypto_calendar import generate_crypto_calendars
@@ -112,5 +115,10 @@ async def create_snapshot(
 
     except Exception as e:
         logger.error(f"Error creating snapshot: {e}", exc_info=True)
-        await monitor.fail_process(process_id, str(e))
+        # Only fail process if it was successfully started
+        if process_started:
+            try:
+                await monitor.fail_process(process_id, str(e))
+            except Exception as monitor_error:
+                logger.error(f"Failed to update process monitor: {monitor_error}")
         return {"error": str(e), "dataset": dataset}

@@ -94,7 +94,13 @@ class ProcessMonitor:
     """
     _instance = None
     _processes: Dict[str, ProcessInfo] = {}
-    _lock = asyncio.Lock()
+    _lock: Optional[asyncio.Lock] = None
+
+    def _get_lock(self) -> asyncio.Lock:
+        """Lazy-initialize lock to avoid event loop requirement at import time"""
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
 
     def __new__(cls):
         if cls._instance is None:
@@ -108,7 +114,7 @@ class ProcessMonitor:
         total_steps: int = 0
     ) -> ProcessInfo:
         """Start tracking a new process - FAIL if already exists"""
-        async with self._lock:
+        async with self._get_lock():
             if process_id in self._processes:
                 raise ValueError(f"Process {process_id} already exists!")
 
@@ -134,7 +140,7 @@ class ProcessMonitor:
         completed_steps: Optional[int] = None
     ):
         """Update process progress"""
-        async with self._lock:
+        async with self._get_lock():
             if process_id not in self._processes:
                 raise ValueError(f"Process {process_id} not found!")
 
@@ -153,7 +159,7 @@ class ProcessMonitor:
         result: Dict[str, Any]
     ):
         """Mark process as completed"""
-        async with self._lock:
+        async with self._get_lock():
             if process_id not in self._processes:
                 raise ValueError(f"Process {process_id} not found!")
 
@@ -177,7 +183,7 @@ class ProcessMonitor:
         error: str
     ):
         """Mark process as failed - NO FALLBACKS"""
-        async with self._lock:
+        async with self._get_lock():
             if process_id not in self._processes:
                 raise ValueError(f"Process {process_id} not found!")
 
@@ -209,17 +215,17 @@ class ProcessMonitor:
 
     async def get_process(self, process_id: str) -> Optional[ProcessInfo]:
         """Get process info"""
-        async with self._lock:
+        async with self._get_lock():
             return self._processes.get(process_id)
 
     async def get_all_processes(self) -> List[ProcessInfo]:
         """Get all processes"""
-        async with self._lock:
+        async with self._get_lock():
             return list(self._processes.values())
 
     async def get_running_processes(self) -> List[ProcessInfo]:
         """Get only running processes"""
-        async with self._lock:
+        async with self._get_lock():
             return [
                 p for p in self._processes.values()
                 if p.status == ProcessStatus.RUNNING
@@ -227,7 +233,7 @@ class ProcessMonitor:
 
     async def cancel_process(self, process_id: str):
         """Cancel a running process"""
-        async with self._lock:
+        async with self._get_lock():
             if process_id not in self._processes:
                 raise ValueError(f"Process {process_id} not found!")
 

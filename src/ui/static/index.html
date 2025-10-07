@@ -1519,6 +1519,17 @@
 
                         ws.onclose = () => {
                             delete this.processWebSockets[processId];
+                            // Check if process was still running when connection closed
+                            const process = this.processes.find(p => p.process_id === processId);
+                            if (process && process.status === "running") {
+                                this.addActivity(`Lost connection to process ${processId}`, "warning");
+                            }
+                        };
+
+                        ws.onerror = (error) => {
+                            console.error(`WebSocket error for ${processId}:`, error);
+                            delete this.processWebSockets[processId];
+                            this.addActivity(`Connection error for process ${processId}`, "error");
                         };
 
                         this.processWebSockets[processId] = ws;

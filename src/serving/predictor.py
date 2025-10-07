@@ -27,15 +27,18 @@ async def predict_today(model_id: str, dataset_ref: str) -> Dict[str, Any]:
     Returns:
         Predictions with confidence scores
     """
-    # Generate process ID
-    process_id = f"prediction_{uuid.uuid4().hex[:8]}"
+    # Generate process ID with timestamp to prevent collisions
+    import time
+    process_id = f"prediction_{int(time.time() * 1000)}_{uuid.uuid4().hex[:6]}"
 
     # Total steps: validation, init, load_model, load_config, create_dataset, predict, save
     total_steps = 7
 
+    process_started = False
     try:
         # Start process monitoring
         await monitor.start_process(process_id, "prediction", total_steps=total_steps)
+        process_started = True
 
         from qlib.data.dataset import DatasetH
         from qlib.utils import init_instance_by_config
@@ -204,7 +207,12 @@ async def predict_today(model_id: str, dataset_ref: str) -> Dict[str, Any]:
 
     except Exception as e:
         logger.error(f"Error generating predictions: {e}", exc_info=True)
-        await monitor.fail_process(process_id, str(e))
+        # Only fail process if it was successfully started
+        if process_started:
+            try:
+                await monitor.fail_process(process_id, str(e))
+            except Exception as monitor_error:
+                logger.error(f"Failed to update process monitor: {monitor_error}")
         return {
             "error": str(e),
             "model_id": model_id,

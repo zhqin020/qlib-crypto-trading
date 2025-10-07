@@ -37,15 +37,18 @@ async def run_backtest(
     Returns:
         Backtest results with performance metrics
     """
-    # Generate process ID
-    process_id = f"backtest_{uuid.uuid4().hex[:8]}"
+    # Generate process ID with timestamp to prevent collisions
+    import time
+    process_id = f"backtest_{int(time.time() * 1000)}_{uuid.uuid4().hex[:6]}"
 
     # Total steps: validation, init, load_model, config, run_backtest, calc_metrics, save
     total_steps = 7
 
+    process_started = False
     try:
         # Start process monitoring
         await monitor.start_process(process_id, "backtest", total_steps=total_steps)
+        process_started = True
 
         from qlib.backtest import backtest as qlib_backtest, executor
         from qlib.contrib.strategy import TopkDropoutStrategy
@@ -210,7 +213,12 @@ async def run_backtest(
 
     except Exception as e:
         logger.error(f"Error running backtest: {e}", exc_info=True)
-        await monitor.fail_process(process_id, str(e))
+        # Only fail process if it was successfully started
+        if process_started:
+            try:
+                await monitor.fail_process(process_id, str(e))
+            except Exception as monitor_error:
+                logger.error(f"Failed to update process monitor: {monitor_error}")
         return {
             "error": str(e),
             "model_id": model_id,

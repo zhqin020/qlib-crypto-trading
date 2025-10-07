@@ -32,15 +32,18 @@ async def train_model(
     Returns:
         Training result with model_id and metrics
     """
-    # Generate process ID
-    process_id = f"training_{uuid.uuid4().hex[:8]}"
+    # Generate process ID with timestamp to prevent collisions
+    import time
+    process_id = f"training_{int(time.time() * 1000)}_{uuid.uuid4().hex[:6]}"
 
     # Total steps: validation, init, model_gen, dataset_load, training, prediction, save, record
     total_steps = 8
 
+    process_started = False
     try:
         # Start process monitoring
         await monitor.start_process(process_id, "training", total_steps=total_steps)
+        process_started = True
 
         from qlib.workflow import R
         from qlib.workflow.record_temp import SignalRecord
@@ -194,7 +197,12 @@ async def train_model(
 
     except Exception as e:
         logger.error(f"Error training model: {e}", exc_info=True)
-        await monitor.fail_process(process_id, str(e))
+        # Only fail process if it was successfully started
+        if process_started:
+            try:
+                await monitor.fail_process(process_id, str(e))
+            except Exception as monitor_error:
+                logger.error(f"Failed to update process monitor: {monitor_error}")
         return {
             "error": str(e),
             "dataset": dataset_ref,
