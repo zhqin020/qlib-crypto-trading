@@ -41,6 +41,24 @@ async def train_model(
         models_dir = project_root / "models" / "trained"
         models_dir.mkdir(parents=True, exist_ok=True)
 
+        # Validate dataset exists
+        if not qlib_dir.exists():
+            logger.error(f"Dataset directory not found: {qlib_dir}")
+            return {
+                "error": f"Dataset '{dataset_ref}' not found at {qlib_dir}",
+                "status": "failed",
+                "dataset": dataset_ref
+            }
+
+        # Validate dataset has required structure
+        if not (qlib_dir / "calendars").exists() and not (qlib_dir / "instruments").exists():
+            logger.error(f"Dataset directory exists but appears empty: {qlib_dir}")
+            return {
+                "error": f"Dataset '{dataset_ref}' appears to be empty or invalid",
+                "status": "failed",
+                "dataset": dataset_ref
+            }
+
         # Initialize Qlib with clean cache (prevents state bleed)
         success = init_qlib_clean(
             provider_uri=str(qlib_dir),

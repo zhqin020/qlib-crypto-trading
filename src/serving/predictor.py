@@ -33,6 +33,26 @@ async def predict_today(model_id: str, dataset_ref: str) -> Dict[str, Any]:
         models_dir = project_root / "models" / "trained"
         qlib_dir = project_root / "data" / "qlib" / dataset_ref
 
+        # Validate dataset exists
+        if not qlib_dir.exists():
+            logger.error(f"Dataset directory not found: {qlib_dir}")
+            return {
+                "error": f"Dataset '{dataset_ref}' not found at {qlib_dir}",
+                "status": "failed",
+                "dataset": dataset_ref,
+                "model_id": model_id
+            }
+
+        # Validate dataset has required structure
+        if not (qlib_dir / "calendars").exists() and not (qlib_dir / "instruments").exists():
+            logger.error(f"Dataset directory exists but appears empty: {qlib_dir}")
+            return {
+                "error": f"Dataset '{dataset_ref}' appears to be empty or invalid",
+                "status": "failed",
+                "dataset": dataset_ref,
+                "model_id": model_id
+            }
+
         # Initialize Qlib with clean cache (prevents state bleed)
         success = init_qlib_clean(
             provider_uri=str(qlib_dir),
