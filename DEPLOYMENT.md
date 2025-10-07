@@ -436,17 +436,40 @@ engine = create_engine(
 )
 ```
 
-### Qlib Optimization
+### Qlib State Management
+
+The platform uses clean initialization to prevent state contamination:
 
 ```python
-# Use binary cache
-import qlib
-qlib.init(
-    provider_uri="data/qlib",
-    mount_path="/tmp/qlib_cache",
-    auto_mount=True
+from utils.qlib_state import init_qlib_clean
+
+success = init_qlib_clean(
+    provider_uri="data/qlib/crypto",
+    region="cn"
+)
+
+if not success:
+    logger.error("Failed to initialize qlib")
+    # Handle error
+```
+
+**Features:**
+- Automatic 24/7 crypto calendar registration
+- Cache clearing prevents data bleed
+- Concurrency protection via async lock
+- Validation of cache clear success
+
+**For async contexts (MCP tools):**
+```python
+from utils.qlib_state import init_qlib_clean_async
+
+success = await init_qlib_clean_async(
+    provider_uri="data/qlib/crypto",
+    region="cn"
 )
 ```
+
+See [STATE_BLEED_FIX.md](STATE_BLEED_FIX.md) for details.
 
 ## Maintenance
 

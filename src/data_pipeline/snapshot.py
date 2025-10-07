@@ -30,7 +30,7 @@ async def create_snapshot(
         Snapshot metadata
     """
     try:
-        from .qlib_converter import convert_crypto_data
+        from .official_qlib_converter import convert_crypto_data_official
         from .crypto_calendar import generate_crypto_calendars
 
         project_root = Path(__file__).parent.parent.parent
@@ -51,7 +51,7 @@ async def create_snapshot(
 
         if csv_dir.exists() and list(csv_dir.glob("*.csv")):
             logger.info(f"Converting data for dataset: {dataset}")
-            result = convert_crypto_data(
+            result = convert_crypto_data_official(
                 csv_dir=str(csv_dir),
                 qlib_dir=str(qlib_dir),
                 freq=freq

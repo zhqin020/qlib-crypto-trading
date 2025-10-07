@@ -34,15 +34,34 @@ async def train_model(
         from qlib.workflow import R
         from qlib.workflow.record_temp import SignalRecord
         from qlib.utils import init_instance_by_config
-        from ..utils.qlib_state import init_qlib_clean
+        from ..utils.qlib_state import init_qlib_clean_async
 
         project_root = Path(__file__).parent.parent.parent
         qlib_dir = project_root / "data" / "qlib" / dataset_ref
         models_dir = project_root / "models" / "trained"
         models_dir.mkdir(parents=True, exist_ok=True)
 
+        # Validate dataset exists
+        if not qlib_dir.exists():
+            logger.error(f"Dataset directory not found: {qlib_dir}")
+            return {
+                "error": f"Dataset '{dataset_ref}' not found at {qlib_dir}",
+                "status": "failed",
+                "dataset": dataset_ref
+            }
+
+        # Validate dataset has required structure
+        if not (qlib_dir / "calendars").exists() and not (qlib_dir / "instruments").exists():
+            logger.error(f"Dataset directory exists but appears empty: {qlib_dir}")
+            return {
+                "error": f"Dataset '{dataset_ref}' appears to be empty or invalid",
+                "status": "failed",
+                "dataset": dataset_ref
+            }
+
         # Initialize Qlib with clean cache (prevents state bleed)
-        success = init_qlib_clean(
+        # Use async version for concurrency protection
+        success = await init_qlib_clean_async(
             provider_uri=str(qlib_dir),
             region="cn",
             expression_cache=None,

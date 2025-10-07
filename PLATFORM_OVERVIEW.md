@@ -16,6 +16,7 @@ A production-ready, AI-powered cryptocurrency trading platform built on Microsof
 - **Backtesting Engine** (`src/backtesting/`): Crypto-specific metrics and transaction costs
 - **Serving Layer** (`src/serving/`): Real-time predictions, notifications, scheduling
 - **Web UI** (`src/ui/`): REST API with FastAPI, beautiful dashboard, WebSocket support
+- **State Management** (`src/utils/`): Qlib state management, cache clearing, calendar registration
 
 ### 2. Data Management ✅
 
@@ -143,7 +144,23 @@ A production-ready, AI-powered cryptocurrency trading platform built on Microsof
 **Key Files:**
 - `src/ui/api_enhanced.py` - FastAPI application
 
-### 8. MCP Server Integration ✅
+### 8. State Management ✅
+- **Automatic Qlib initialization**: Clean state for every tool call
+- **24/7 crypto calendar**: Auto-registered, no stock market hours
+- **Concurrency protection**: Async lock prevents race conditions
+- **Cache clearing**: Prevents data contamination between runs
+- **Clean re-initialization**: Each tool call starts fresh
+
+**Key Features:**
+- Automatic calendar registration in `init_qlib_clean()`
+- Global async lock in `init_qlib_clean_async()`
+- Cache clear verification before init
+- Enhanced logging for debugging
+
+**Key Files:**
+- `src/utils/qlib_state.py` - State management implementation
+
+### 9. MCP Server Integration ✅
 
 **Available Tools** (15 total):
 

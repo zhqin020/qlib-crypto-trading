@@ -211,3 +211,67 @@ To verify the fix works:
 2. **Benchmark overhead** - Measure performance impact of state clearing
 3. **Consider process pools** - If overhead becomes significant, could use process pool with max reuse count
 4. **Upstream contribution** - Consider proposing `qlib.reset()` method to qlib project
+
+## Enhancements (2025-10-07)
+
+Since initial implementation, the following enhancements were added:
+
+### 1. Automatic Calendar Registration
+The crypto 24/7 calendar is now automatically registered in `init_qlib_clean()`:
+- No manual `register_crypto_calendar()` calls needed
+- Ensures all tools use correct calendar
+- Handles errors gracefully with warning logs
+- File: `src/utils/qlib_state.py:64-71`
+
+```python
+# Register 24/7 crypto calendar BEFORE qlib.init()
+try:
+    from ..data_pipeline.crypto_calendar_provider import register_crypto_calendar
+    register_crypto_calendar()
+    logger.info("Crypto calendar registered")
+except Exception as e:
+    logger.warning(f"Could not register crypto calendar: {e}")
+```
+
+### 2. Concurrency Protection
+Added async lock to prevent race conditions:
+- Function: `init_qlib_clean_async()`
+- Uses global `_init_lock` (asyncio.Lock)
+- Prevents concurrent tool calls from racing
+- Safe for `asyncio.gather()` usage
+- File: `src/utils/qlib_state.py:104-134`
+
+```python
+# Global async lock to prevent concurrent qlib initialization
+_init_lock = asyncio.Lock()
+
+async def init_qlib_clean_async(...):
+    async with _init_lock:
+        logger.info("Acquired init lock, proceeding with qlib initialization")
+        # Run the sync version in executor to avoid blocking
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, init_qlib_clean, ...)
+        return result
+```
+
+### 3. Cache Clear Verification
+`init_qlib_clean()` now checks cache clear succeeded:
+- Prevents partial state bleed
+- Returns False if cache clear fails
+- Logs error before attempting init
+- File: `src/utils/qlib_state.py:73-77`
+
+```python
+# Clear cache before init to prevent data bleed
+success = clear_qlib_cache()
+if not success:
+    logger.error("Failed to clear qlib cache before init")
+    return False
+```
+
+### 4. Enhanced Logging
+Better visibility into state management operations:
+- Logs calendar registration attempts
+- Logs cache clearing operations
+- Logs init lock acquisition
+- Helps debug state issues in production

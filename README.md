@@ -424,15 +424,38 @@ pytest --cov=src tests/
 
 ## 📚 Advanced Usage
 
+### State Management
+
+The platform automatically manages Qlib state to prevent data contamination:
+
+- **Automatic calendar registration**: 24/7 crypto calendar is registered automatically
+- **Cache clearing**: Qlib cache is cleared before each initialization
+- **Concurrency protection**: Async lock prevents race conditions
+- **Clean initialization**: Each tool call starts with fresh state
+
+```python
+from utils.qlib_state import init_qlib_clean
+
+# For synchronous contexts
+success = init_qlib_clean(provider_uri="/path/to/data", region="cn")
+
+# For async contexts (MCP tools)
+from utils.qlib_state import init_qlib_clean_async
+success = await init_qlib_clean_async(provider_uri="/path/to/data", region="cn")
+```
+
+See [STATE_BLEED_FIX.md](STATE_BLEED_FIX.md) for technical details.
+
 ### Custom Data Handler
 
 ```python
 from qlib.data.dataset.handler import DataHandlerLP
+from utils.qlib_state import init_qlib_clean
 
 class CryptoHandler(DataHandlerLP):
     def __init__(self, instruments="all", **kwargs):
         super().__init__(instruments=instruments, **kwargs)
-    
+
     # Custom data processing
     def process(self, data):
         # Add crypto-specific features
@@ -444,12 +467,15 @@ class CryptoHandler(DataHandlerLP):
 
 ```python
 from qlib.contrib.model.base import Model
+from utils.qlib_state import init_qlib_clean
 
 class CustomCryptoModel(Model):
     def fit(self, dataset):
+        # Initialize with clean state
+        init_qlib_clean(provider_uri="data/qlib/crypto", region="cn")
         # Custom training logic
         pass
-    
+
     def predict(self, dataset):
         # Custom prediction logic
         pass

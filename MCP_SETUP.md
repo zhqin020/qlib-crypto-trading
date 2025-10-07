@@ -185,3 +185,57 @@ Once connected to Claude, you can use natural language:
 - ✅ Ready to connect to Claude Code
 
 **Just add the config to Claude and restart!**
+
+---
+
+## Troubleshooting: State Bleed Issues
+
+### Symptoms:
+- Model trained with wrong dataset
+- Zero training samples despite valid data
+- Config showing previous dataset path
+- Unexpected calendar dates (stock market hours vs 24/7 crypto)
+
+### Solution:
+All MCP tools automatically use `init_qlib_clean()` which:
+- **Clears qlib memory cache** - Prevents data contamination from previous runs
+- **Registers 24/7 crypto calendar** - Ensures continuous trading hours
+- **Validates initialization** - Returns False if cache clear fails
+- **Protects against concurrent races** - Async lock prevents simultaneous inits
+
+### Implementation Details:
+See `src/utils/qlib_state.py` for the complete implementation:
+
+```python
+# Synchronous usage (scripts)
+from utils.qlib_state import init_qlib_clean
+success = init_qlib_clean(provider_uri="data/qlib/crypto", region="cn")
+
+# Async usage (MCP tools)
+from utils.qlib_state import init_qlib_clean_async
+success = await init_qlib_clean_async(provider_uri="data/qlib/crypto", region="cn")
+```
+
+### What Gets Cleared:
+1. **Qlib cache (H)**: Calendar, instruments, features data
+2. **Previous calendar provider**: Replaced with 24/7 crypto calendar
+3. **Provider URI**: Set to requested dataset path
+4. **Expression/dataset caches**: Disabled by default
+
+### Verification:
+Check logs for these messages:
+```
+INFO: Clearing qlib cache (H)...
+INFO: Successfully cleared qlib cache
+INFO: Crypto calendar registered
+INFO: Initializing qlib with provider_uri: /path/to/data
+INFO: Qlib initialized successfully
+```
+
+### If State Bleed Still Occurs:
+1. Check that tools are using `init_qlib_clean()` (not direct `qlib.init()`)
+2. Verify cache clear succeeded (check return value)
+3. Look for error messages during calendar registration
+4. Ensure dataset path is correct and accessible
+
+See [STATE_BLEED_FIX.md](STATE_BLEED_FIX.md) for full technical details.

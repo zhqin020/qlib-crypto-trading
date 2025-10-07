@@ -25,6 +25,28 @@ pip install -r requirements.txt
 make setup
 ```
 
+## State Management
+
+The platform automatically manages Qlib state. When working with multiple datasets:
+
+```python
+from utils.qlib_state import init_qlib_clean
+
+# Each initialization clears previous state
+init_qlib_clean(provider_uri="data/qlib/dataset_A", region="cn")
+# ... work with dataset A ...
+
+init_qlib_clean(provider_uri="data/qlib/dataset_B", region="cn")
+# ... work with dataset B (no contamination from A)
+```
+
+**Features:**
+- Automatic 24/7 crypto calendar registration
+- Cache clearing prevents data bleed
+- No manual state management needed
+
+See [STATE_BLEED_FIX.md](STATE_BLEED_FIX.md) for technical details.
+
 ## Step 2: Download Sample Data (3 minutes)
 
 Download historical data for top 10 cryptocurrencies:
