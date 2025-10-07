@@ -7,6 +7,9 @@ from typing import Optional
 from pathlib import Path
 import json
 from datetime import datetime
+import uuid
+
+from ..monitoring.process_monitor import monitor, ProcessStatus
 
 logger = logging.getLogger(__name__)
 
@@ -29,12 +32,27 @@ async def create_snapshot(
     Returns:
         Snapshot metadata
     """
+    # Generate process ID
+    process_id = f"download_{uuid.uuid4().hex[:8]}"
+
+    # Total steps: init, generate_calendars, extract_freq, convert_data, save_meta
+    total_steps = 5
+
     try:
+        # Start process monitoring
+        await monitor.start_process(process_id, "download", total_steps=total_steps)
+
         from .official_qlib_converter import convert_crypto_data_official
         from .crypto_calendar import generate_crypto_calendars
 
+        # Step 1: Initialize paths
+        await monitor.update_progress(process_id, 20.0, f"Initializing snapshot for dataset '{dataset}'", 1)
+
         project_root = Path(__file__).parent.parent.parent
         data_dir = project_root / "data"
+
+        # Step 2: Generate calendars
+        await monitor.update_progress(process_id, 40.0, f"Generating crypto calendars for '{calendar}'", 2)
 
         # Generate calendars if needed
         calendars_dir = data_dir / "qlib" / "calendars"
@@ -42,8 +60,14 @@ async def create_snapshot(
             logger.info("Generating crypto calendars...")
             generate_crypto_calendars(str(calendars_dir))
 
+        # Step 3: Extract frequency
+        await monitor.update_progress(process_id, 60.0, f"Extracting frequency from calendar '{calendar}'", 3)
+
         # Extract frequency from calendar name
         freq = calendar.replace("crypto_", "")
+
+        # Step 4: Convert data
+        await monitor.update_progress(process_id, 80.0, f"Converting CSV data to Qlib format (freq={freq})", 4)
 
         # Convert data if not already done
         csv_dir = data_dir / "raw"
@@ -58,6 +82,9 @@ async def create_snapshot(
             )
         else:
             result = {"message": "No CSV files found, snapshot structure created"}
+
+        # Step 5: Save metadata
+        await monitor.update_progress(process_id, 95.0, f"Saving snapshot metadata", 5)
 
         snapshot_meta = {
             "dataset": dataset,
@@ -77,9 +104,13 @@ async def create_snapshot(
         with open(meta_file, 'w') as f:
             json.dump(snapshot_meta, f, indent=2)
 
+        # Complete process monitoring
+        await monitor.complete_process(process_id, snapshot_meta)
+
         logger.info(f"Snapshot created for dataset: {dataset}")
         return snapshot_meta
 
     except Exception as e:
         logger.error(f"Error creating snapshot: {e}", exc_info=True)
+        await monitor.fail_process(process_id, str(e))
         return {"error": str(e), "dataset": dataset}

@@ -367,6 +367,186 @@
                 grid-template-columns: 1fr 1fr;
                 gap: 12px;
             }
+
+            /* Progress tracking styles */
+            .process-card {
+                padding: 16px;
+                background: var(--bg-tertiary);
+                border-radius: 8px;
+                margin-bottom: 12px;
+                border-left: 3px solid var(--accent);
+            }
+
+            .process-card.running {
+                border-left-color: var(--accent);
+            }
+
+            .process-card.completed {
+                border-left-color: var(--success);
+            }
+
+            .process-card.failed {
+                border-left-color: var(--danger);
+            }
+
+            .process-card.cancelled {
+                border-left-color: var(--text-tertiary);
+            }
+
+            .process-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 12px;
+            }
+
+            .process-title {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                font-weight: 600;
+                font-size: 14px;
+            }
+
+            .process-status-icon {
+                width: 20px;
+                height: 20px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            .process-status-icon.running {
+                color: var(--accent);
+            }
+
+            .process-status-icon.completed {
+                color: var(--success);
+            }
+
+            .process-status-icon.failed {
+                color: var(--danger);
+            }
+
+            .process-meta {
+                font-size: 12px;
+                color: var(--text-secondary);
+                margin-bottom: 8px;
+            }
+
+            .progress-bar-container {
+                background: var(--bg-primary);
+                border-radius: 4px;
+                height: 6px;
+                overflow: hidden;
+                margin-bottom: 8px;
+            }
+
+            .progress-bar {
+                height: 100%;
+                background: var(--accent);
+                transition: width 0.5s ease;
+                border-radius: 4px;
+            }
+
+            .progress-bar.completed {
+                background: var(--success);
+            }
+
+            .progress-bar.failed {
+                background: var(--danger);
+            }
+
+            .progress-text {
+                font-size: 12px;
+                color: var(--text-secondary);
+                display: flex;
+                justify-content: space-between;
+                margin-top: 4px;
+            }
+
+            .process-logs {
+                max-height: 0;
+                overflow: hidden;
+                transition: max-height 0.3s ease;
+            }
+
+            .process-logs.expanded {
+                max-height: 200px;
+                overflow-y: auto;
+                margin-top: 12px;
+            }
+
+            .log-entry {
+                font-family: "JetBrains Mono", monospace;
+                font-size: 11px;
+                padding: 4px 8px;
+                background: var(--bg-primary);
+                border-radius: 3px;
+                margin-bottom: 4px;
+            }
+
+            .log-entry.INFO {
+                color: var(--text-secondary);
+            }
+
+            .log-entry.WARNING {
+                color: var(--warning);
+            }
+
+            .log-entry.ERROR {
+                color: var(--danger);
+            }
+
+            .btn-cancel {
+                padding: 4px 12px;
+                background: var(--danger-bg);
+                color: var(--danger);
+                border: 1px solid var(--danger);
+                border-radius: 4px;
+                font-size: 12px;
+                cursor: pointer;
+                transition: all 0.2s;
+            }
+
+            .btn-cancel:hover {
+                background: var(--danger);
+                color: white;
+            }
+
+            .btn-expand {
+                padding: 4px 12px;
+                background: transparent;
+                color: var(--text-secondary);
+                border: 1px solid var(--border);
+                border-radius: 4px;
+                font-size: 12px;
+                cursor: pointer;
+                transition: all 0.2s;
+            }
+
+            .btn-expand:hover {
+                color: var(--text-primary);
+                border-color: var(--accent);
+            }
+
+            .process-actions {
+                display: flex;
+                gap: 8px;
+            }
+
+            @keyframes rotate {
+                from {
+                    transform: rotate(0deg);
+                }
+                to {
+                    transform: rotate(360deg);
+                }
+            }
+
+            .icon-spin {
+                animation: rotate 1s linear infinite;
+            }
         </style>
     </head>
     <body>
@@ -481,6 +661,56 @@
                                         "
                                     >
                                         {{ datasets.length }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Active Processes Section -->
+                        <div class="section">
+                            <div class="section-title">⚡ Active Processes</div>
+                            <div v-if="processes.length === 0" class="empty">
+                                No active processes
+                            </div>
+                            <div v-for="process in processes" :key="process.process_id" :class="['process-card', process.status]">
+                                <div class="process-header">
+                                    <div class="process-title">
+                                        <div :class="['process-status-icon', process.status]">
+                                            <span v-if="process.status === 'running'" class="icon-spin">⟳</span>
+                                            <span v-else-if="process.status === 'completed'">✓</span>
+                                            <span v-else-if="process.status === 'failed'">✗</span>
+                                            <span v-else-if="process.status === 'cancelled'">⊗</span>
+                                        </div>
+                                        <span>{{ process.process_type }} - {{ process.process_id }}</span>
+                                    </div>
+                                    <div class="process-actions">
+                                        <button @click="toggleProcessLogs(process.process_id)" class="btn-expand">
+                                            {{ expandedProcesses[process.process_id] ? 'Hide Logs' : 'Show Logs' }}
+                                        </button>
+                                        <button v-if="process.status === 'running'" @click="cancelProcess(process.process_id)" class="btn-cancel">
+                                            Cancel
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="process-meta">
+                                    {{ process.metrics.current_step }} | Elapsed: {{ formatDuration(process) }}
+                                </div>
+
+                                <div class="progress-bar-container">
+                                    <div :class="['progress-bar', process.status]" :style="{ width: process.metrics.progress_percent + '%' }"></div>
+                                </div>
+
+                                <div class="progress-text">
+                                    <span>{{ process.metrics.progress_percent.toFixed(1) }}%</span>
+                                    <span v-if="process.metrics.total_steps > 0">
+                                        Step {{ process.metrics.completed_steps }} / {{ process.metrics.total_steps }}
+                                    </span>
+                                </div>
+
+                                <div :class="['process-logs', { expanded: expandedProcesses[process.process_id] }]">
+                                    <div v-for="log in process.logs.slice(-20)" :key="log.timestamp" :class="['log-entry', log.level]">
+                                        [{{ formatLogTime(log.timestamp) }}] {{ log.message }}
                                     </div>
                                 </div>
                             </div>
@@ -930,12 +1160,16 @@
                     return {
                         connected: false,
                         ws: null,
+                        processWs: null,
                         loading: false,
                         page: "dashboard",
                         models: [],
                         datasets: [],
                         selectedModel: null,
                         activities: [],
+                        processes: [],
+                        expandedProcesses: {},
+                        processWebSockets: {},
                         nextId: 1,
                         forms: {
                             data: {
@@ -979,8 +1213,15 @@
                 },
                 mounted() {
                     this.connectWebSocket();
+                    this.connectProcessWebSocket();
                     this.loadModels();
                     this.loadDatasets();
+                    this.loadProcesses();
+
+                    // Update elapsed time every second
+                    setInterval(() => {
+                        this.$forceUpdate();
+                    }, 1000);
                 },
                 methods: {
                     connectWebSocket() {
@@ -1058,6 +1299,13 @@
                                 body: JSON.stringify(data),
                             });
                             const result = await res.json();
+
+                            // If a process_id is returned, start monitoring it
+                            if (result.process_id) {
+                                this.monitorProcess(result.process_id);
+                                this.addActivity(`Started ${formKey} (${result.process_id})`, "info");
+                            }
+
                             this.forms[formKey].result = JSON.stringify(
                                 result,
                                 null,
@@ -1159,6 +1407,121 @@
                     },
                     formatTime(timestamp) {
                         return new Date(timestamp).toLocaleTimeString();
+                    },
+                    connectProcessWebSocket() {
+                        const protocol =
+                            window.location.protocol === "https:"
+                                ? "wss:"
+                                : "ws:";
+                        const wsUrl = `${protocol}//${window.location.host}/ws/processes`;
+                        this.processWs = new WebSocket(wsUrl);
+
+                        this.processWs.onopen = () => {
+                            console.log("Process WebSocket connected");
+                        };
+
+                        this.processWs.onclose = () => {
+                            console.log("Process WebSocket disconnected, reconnecting...");
+                            setTimeout(() => this.connectProcessWebSocket(), 3000);
+                        };
+
+                        this.processWs.onmessage = (event) => {
+                            const data = JSON.parse(event.data);
+                            if (data.type === "process_update") {
+                                this.processes = data.processes || [];
+                            }
+                        };
+                    },
+                    async loadProcesses() {
+                        try {
+                            const res = await fetch("/api/processes");
+                            const data = await res.json();
+                            this.processes = data.processes || [];
+                        } catch (e) {
+                            console.error("Failed to load processes:", e);
+                        }
+                    },
+                    toggleProcessLogs(processId) {
+                        this.expandedProcesses[processId] = !this.expandedProcesses[processId];
+                        this.$forceUpdate();
+                    },
+                    async cancelProcess(processId) {
+                        if (!confirm(`Cancel process ${processId}?`)) return;
+
+                        try {
+                            const res = await fetch(`/api/processes/${processId}`, {
+                                method: "DELETE",
+                            });
+                            const result = await res.json();
+                            this.addActivity(`Process ${processId} cancelled`, "warning");
+                        } catch (error) {
+                            this.addActivity(`Failed to cancel ${processId}: ${error.message}`, "error");
+                        }
+                    },
+                    formatDuration(process) {
+                        if (!process.metrics.start_time) return "N/A";
+
+                        const start = new Date(process.metrics.start_time);
+                        const end = process.metrics.end_time
+                            ? new Date(process.metrics.end_time)
+                            : new Date();
+
+                        const seconds = Math.floor((end - start) / 1000);
+                        const minutes = Math.floor(seconds / 60);
+                        const hours = Math.floor(minutes / 60);
+
+                        if (hours > 0) {
+                            return `${hours}h ${minutes % 60}m ${seconds % 60}s`;
+                        } else if (minutes > 0) {
+                            return `${minutes}m ${seconds % 60}s`;
+                        } else {
+                            return `${seconds}s`;
+                        }
+                    },
+                    formatLogTime(timestamp) {
+                        const date = new Date(timestamp);
+                        return date.toLocaleTimeString();
+                    },
+                    monitorProcess(processId) {
+                        // Connect to process-specific WebSocket for real-time updates
+                        const protocol =
+                            window.location.protocol === "https:"
+                                ? "wss:"
+                                : "ws:";
+                        const wsUrl = `${protocol}//${window.location.host}/ws/processes/${processId}`;
+                        const ws = new WebSocket(wsUrl);
+
+                        ws.onmessage = (event) => {
+                            const data = JSON.parse(event.data);
+                            if (data.type === "process_update") {
+                                // Update the specific process in the list
+                                const index = this.processes.findIndex(
+                                    (p) => p.process_id === processId
+                                );
+                                if (index >= 0) {
+                                    this.processes[index] = data.data;
+                                    this.$forceUpdate();
+                                } else {
+                                    this.processes.unshift(data.data);
+                                }
+                            } else if (data.type === "process_complete") {
+                                // Final update, then close
+                                const index = this.processes.findIndex(
+                                    (p) => p.process_id === processId
+                                );
+                                if (index >= 0) {
+                                    this.processes[index] = data.data;
+                                }
+                                ws.close();
+                                delete this.processWebSockets[processId];
+                            }
+                        };
+
+                        ws.onclose = () => {
+                            delete this.processWebSockets[processId];
+                        };
+
+                        this.processWebSockets[processId] = ws;
                     },
                 },
             }).mount("#app");

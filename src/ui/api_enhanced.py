@@ -12,8 +12,10 @@ from pathlib import Path
 import logging
 import json
 import asyncio
+from datetime import datetime
 
 from .events import get_event_broadcaster
+from ..monitoring.process_monitor import monitor, ProcessInfo
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +70,33 @@ class BacktestRequest(BaseModel):
 class PredictionRequest(BaseModel):
     model_id: str
     dataset: str
+
+
+# Process response models
+class ProcessLogResponse(BaseModel):
+    timestamp: str
+    level: str
+    message: str
+
+class ProcessMetricsResponse(BaseModel):
+    start_time: Optional[str]
+    end_time: Optional[str]
+    duration_seconds: Optional[float]
+    progress_percent: float
+    current_step: str
+    total_steps: int
+    completed_steps: int
+    memory_mb: Optional[float]
+    cpu_percent: Optional[float]
+
+class ProcessResponse(BaseModel):
+    process_id: str
+    process_type: str
+    status: str
+    metrics: Dict[str, Any]
+    logs: List[Dict[str, str]]
+    result: Optional[Dict[str, Any]]
+    error: Optional[str]
 
 
 # WebSocket endpoint for real-time updates
@@ -224,14 +253,22 @@ async def list_models():
 @app.post("/api/models/train")
 async def train_model(request: TrainModelRequest, background_tasks: BackgroundTasks):
     """Train a new model"""
+    import uuid
     from ..models.trainer import train_model as train
     from ..data_pipeline.features import create_feature_set
+
+    # Generate process ID
+    process_id = f"training_{uuid.uuid4().hex[:8]}"
 
     await broadcaster.broadcast_notification("info", f"Starting model training: {request.model_handler}")
 
     async def train_task():
         try:
-            # Create feature set
+            # Start process monitoring
+            await monitor.start_process(process_id, "training", total_steps=3)
+
+            # Step 1: Create feature set
+            await monitor.update_progress(process_id, 10.0, "Creating feature set", 1)
             feature_set = await create_feature_set(
                 dataset_ref=request.dataset,
                 handler=request.feature_handler
@@ -239,7 +276,8 @@ async def train_model(request: TrainModelRequest, background_tasks: BackgroundTa
 
             await broadcaster.broadcast_model_update("creating", "in_progress", {"feature_set": feature_set["name"]})
 
-            # Train model
+            # Step 2: Train model
+            await monitor.update_progress(process_id, 30.0, f"Training {request.model_handler} model", 2)
             result = await train(
                 dataset_ref=request.dataset,
                 feature_set_ref=feature_set["name"],
@@ -248,16 +286,22 @@ async def train_model(request: TrainModelRequest, background_tasks: BackgroundTa
             )
 
             if "error" not in result:
+                # Step 3: Finalizing
+                await monitor.update_progress(process_id, 90.0, "Saving model", 3)
+                await monitor.complete_process(process_id, result)
+
                 await broadcaster.broadcast_model_update(result["model_id"], "completed", result.get("metrics", {}))
                 await broadcaster.broadcast_notification("success", f"Model {result['model_id']} trained successfully")
             else:
+                await monitor.fail_process(process_id, result['error'])
                 await broadcaster.broadcast_notification("error", f"Training failed: {result['error']}")
         except Exception as e:
+            await monitor.fail_process(process_id, str(e))
             await broadcaster.broadcast_notification("error", f"Training error: {str(e)}")
 
     background_tasks.add_task(train_task)
 
-    return {"status": "started", "dataset": request.dataset, "model": request.model_handler}
+    return {"status": "started", "process_id": process_id, "dataset": request.dataset, "model": request.model_handler}
 
 
 @app.get("/api/models/{model_id}")
@@ -276,13 +320,21 @@ async def get_model(model_id: str):
 @app.post("/api/backtests/run")
 async def run_backtest(request: BacktestRequest, background_tasks: BackgroundTasks):
     """Run backtest for a model"""
+    import uuid
     from ..backtesting.engine import run_backtest as run_bt
+
+    # Generate process ID
+    process_id = f"backtest_{uuid.uuid4().hex[:8]}"
 
     await broadcaster.broadcast_notification("info", f"Starting backtest for model: {request.model_id}")
 
     async def backtest_task():
         try:
+            # Start process monitoring
+            await monitor.start_process(process_id, "backtest", total_steps=2)
+
             await broadcaster.broadcast_backtest_update(request.model_id, 0.0)
+            await monitor.update_progress(process_id, 10.0, "Loading model and data", 1)
 
             result = await run_bt(
                 model_id=request.model_id,
@@ -292,16 +344,21 @@ async def run_backtest(request: BacktestRequest, background_tasks: BackgroundTas
             )
 
             if "error" not in result:
+                await monitor.update_progress(process_id, 90.0, "Calculating metrics", 2)
+                await monitor.complete_process(process_id, result)
+
                 await broadcaster.broadcast_backtest_update(request.model_id, 1.0, result.get("metrics", {}))
                 await broadcaster.broadcast_notification("success", f"Backtest complete for {request.model_id}")
             else:
+                await monitor.fail_process(process_id, result['error'])
                 await broadcaster.broadcast_notification("error", f"Backtest failed: {result['error']}")
         except Exception as e:
+            await monitor.fail_process(process_id, str(e))
             await broadcaster.broadcast_notification("error", f"Backtest error: {str(e)}")
 
     background_tasks.add_task(backtest_task)
 
-    return {"status": "started", "model_id": request.model_id}
+    return {"status": "started", "process_id": process_id, "model_id": request.model_id}
 
 
 @app.get("/api/backtests")
@@ -324,28 +381,42 @@ async def list_backtests():
 @app.post("/api/predictions/generate")
 async def generate_predictions(request: PredictionRequest, background_tasks: BackgroundTasks):
     """Generate predictions for today"""
+    import uuid
     from ..serving.predictor import predict_today
+
+    # Generate process ID
+    process_id = f"prediction_{uuid.uuid4().hex[:8]}"
 
     await broadcaster.broadcast_notification("info", f"Generating predictions with model: {request.model_id}")
 
     async def predict_task():
         try:
+            # Start process monitoring
+            await monitor.start_process(process_id, "prediction", total_steps=2)
+
+            await monitor.update_progress(process_id, 20.0, "Loading model", 1)
+
             result = await predict_today(
                 model_id=request.model_id,
                 dataset_ref=request.dataset
             )
 
             if "error" not in result:
+                await monitor.update_progress(process_id, 80.0, "Generating predictions", 2)
+                await monitor.complete_process(process_id, result)
+
                 await broadcaster.broadcast_prediction_update(request.model_id, result.get("predictions", []))
                 await broadcaster.broadcast_notification("success", f"Generated {len(result.get('predictions', []))} predictions")
             else:
+                await monitor.fail_process(process_id, result['error'])
                 await broadcaster.broadcast_notification("error", f"Prediction failed: {result['error']}")
         except Exception as e:
+            await monitor.fail_process(process_id, str(e))
             await broadcaster.broadcast_notification("error", f"Prediction error: {str(e)}")
 
     background_tasks.add_task(predict_task)
 
-    return {"status": "started", "model_id": request.model_id}
+    return {"status": "started", "process_id": process_id, "model_id": request.model_id}
 
 
 @app.get("/api/predictions")
@@ -418,6 +489,223 @@ async def websocket_market_data(websocket: WebSocket):
         pass
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
+
+
+# Process monitoring endpoints
+@app.get("/api/processes")
+async def get_all_processes():
+    """Get all tracked processes"""
+    processes = await monitor.get_all_processes()
+    return {
+        "processes": [p.to_dict() for p in processes],
+        "total": len(processes)
+    }
+
+
+@app.get("/api/processes/running")
+async def get_running_processes():
+    """Get only running processes"""
+    processes = await monitor.get_running_processes()
+    return {
+        "processes": [p.to_dict() for p in processes],
+        "total": len(processes)
+    }
+
+
+@app.get("/api/processes/{process_id}")
+async def get_process(process_id: str):
+    """Get specific process by ID"""
+    process = await monitor.get_process(process_id)
+    if not process:
+        raise HTTPException(status_code=404, detail=f"Process {process_id} not found")
+    return process.to_dict()
+
+
+@app.delete("/api/processes/{process_id}")
+async def cancel_process(process_id: str):
+    """Cancel a running process"""
+    try:
+        await monitor.cancel_process(process_id)
+        return {"status": "cancelled", "process_id": process_id}
+    except ValueError as e:
+        error_msg = str(e)
+        # Distinguish between 404 (not found) and 400 (invalid operation)
+        if "not found" in error_msg:
+            raise HTTPException(status_code=404, detail=error_msg)
+        else:
+            raise HTTPException(status_code=400, detail=error_msg)
+
+
+@app.get("/api/processes/{process_id}/logs")
+async def get_process_logs(process_id: str, limit: int = 100):
+    """
+    Get logs for a specific process
+
+    Args:
+        process_id: Unique process identifier
+        limit: Maximum number of logs to return (default: 100, max: 1000)
+
+    Returns:
+        {
+            "logs": [
+                {
+                    "timestamp": "2025-10-07T10:00:00",
+                    "level": "INFO",
+                    "message": "Started training process"
+                }
+            ]
+        }
+    """
+    process = await monitor.get_process(process_id)
+
+    if not process:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Process '{process_id}' not found"
+        )
+
+    # Limit to max 1000 logs
+    limit = min(limit, 1000)
+
+    logs = [
+        {
+            "timestamp": log.timestamp,
+            "level": log.level,
+            "message": log.message
+        }
+        for log in process.logs[-limit:]
+    ]
+
+    return {"logs": logs}
+
+
+@app.websocket("/ws/processes")
+async def websocket_processes(websocket: WebSocket):
+    """WebSocket endpoint for real-time process updates - ALL processes"""
+    await websocket.accept()
+
+    try:
+        while True:
+            # Send current process states
+            processes = await monitor.get_all_processes()
+            await websocket.send_json({
+                "type": "process_update",
+                "processes": [p.to_dict() for p in processes],
+                "timestamp": datetime.now().isoformat()
+            })
+
+            # Wait before next update
+            await asyncio.sleep(1)
+
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
+
+
+@app.websocket("/ws/processes/{process_id}")
+async def websocket_process_updates(websocket: WebSocket, process_id: str):
+    """
+    WebSocket endpoint for real-time updates for a SPECIFIC process
+
+    Sends process updates every 500ms while the process is running.
+    Automatically closes when process completes, fails, or is cancelled.
+
+    Protocol:
+        Client -> Server: {"type": "ping"} (keepalive)
+        Server -> Client: {
+            "type": "process_update",
+            "data": {
+                "process_id": "training_abc123",
+                "status": "running",
+                "metrics": {...},
+                "logs": [...],
+                ...
+            }
+        }
+        Server -> Client: {
+            "type": "process_complete",
+            "data": {...}
+        } (then closes)
+
+    Args:
+        process_id: Unique process identifier
+    """
+    await websocket.accept()
+
+    try:
+        # First, verify process exists
+        process = await monitor.get_process(process_id)
+        if not process:
+            await websocket.send_json({
+                "type": "error",
+                "message": f"Process '{process_id}' not found"
+            })
+            await websocket.close()
+            return
+
+        # Send initial state
+        await websocket.send_json({
+            "type": "process_update",
+            "data": process.to_dict()
+        })
+
+        # Keep sending updates while process is running
+        while True:
+            # Check for client messages (keepalive, disconnect)
+            try:
+                message = await asyncio.wait_for(
+                    websocket.receive_text(),
+                    timeout=0.1
+                )
+                data = json.loads(message)
+                if data.get("type") == "ping":
+                    await websocket.send_json({"type": "pong"})
+            except asyncio.TimeoutError:
+                pass  # No message, continue
+
+            # Get latest process state
+            process = await monitor.get_process(process_id)
+            if not process:
+                await websocket.send_json({
+                    "type": "error",
+                    "message": "Process no longer exists"
+                })
+                break
+
+            # Send update
+            await websocket.send_json({
+                "type": "process_update",
+                "data": process.to_dict()
+            })
+
+            # Check if process completed/failed/cancelled
+            if process.status.value in ["completed", "failed", "cancelled"]:
+                await websocket.send_json({
+                    "type": "process_complete",
+                    "data": process.to_dict()
+                })
+                break
+
+            # Wait 500ms before next update
+            await asyncio.sleep(0.5)
+
+    except WebSocketDisconnect:
+        logger.info(f"Client disconnected from process {process_id}")
+    except Exception as e:
+        logger.error(f"WebSocket error for process {process_id}: {e}")
+        try:
+            await websocket.send_json({
+                "type": "error",
+                "message": str(e)
+            })
+        except:
+            pass
+    finally:
+        try:
+            await websocket.close()
+        except:
+            pass
 
 
 def get_enhanced_dashboard_html() -> str:

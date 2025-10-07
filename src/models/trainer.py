@@ -9,6 +9,8 @@ from typing import Dict, Any, Optional
 from datetime import datetime
 import uuid
 
+from ..monitoring.process_monitor import monitor, ProcessStatus
+
 logger = logging.getLogger(__name__)
 
 
@@ -30,7 +32,16 @@ async def train_model(
     Returns:
         Training result with model_id and metrics
     """
+    # Generate process ID
+    process_id = f"training_{uuid.uuid4().hex[:8]}"
+
+    # Total steps: validation, init, model_gen, dataset_load, training, prediction, save, record
+    total_steps = 8
+
     try:
+        # Start process monitoring
+        await monitor.start_process(process_id, "training", total_steps=total_steps)
+
         from qlib.workflow import R
         from qlib.workflow.record_temp import SignalRecord
         from qlib.utils import init_instance_by_config
@@ -41,9 +52,13 @@ async def train_model(
         models_dir = project_root / "models" / "trained"
         models_dir.mkdir(parents=True, exist_ok=True)
 
+        # Step 1: Validate dataset
+        await monitor.update_progress(process_id, 12.5, f"Validating dataset '{dataset_ref}'", 1)
+
         # Validate dataset exists
         if not qlib_dir.exists():
             logger.error(f"Dataset directory not found: {qlib_dir}")
+            await monitor.fail_process(process_id, f"Dataset '{dataset_ref}' not found at {qlib_dir}")
             return {
                 "error": f"Dataset '{dataset_ref}' not found at {qlib_dir}",
                 "status": "failed",
@@ -53,11 +68,15 @@ async def train_model(
         # Validate dataset has required structure
         if not (qlib_dir / "calendars").exists() and not (qlib_dir / "instruments").exists():
             logger.error(f"Dataset directory exists but appears empty: {qlib_dir}")
+            await monitor.fail_process(process_id, f"Dataset '{dataset_ref}' appears to be empty or invalid")
             return {
                 "error": f"Dataset '{dataset_ref}' appears to be empty or invalid",
                 "status": "failed",
                 "dataset": dataset_ref
             }
+
+        # Step 2: Initialize Qlib
+        await monitor.update_progress(process_id, 25.0, f"Initializing Qlib with dataset '{dataset_ref}'", 2)
 
         # Initialize Qlib with clean cache (prevents state bleed)
         # Use async version for concurrency protection
@@ -68,7 +87,11 @@ async def train_model(
             dataset_cache=None,
         )
         if not success:
+            await monitor.fail_process(process_id, f"Failed to initialize qlib for dataset: {dataset_ref}")
             raise RuntimeError(f"Failed to initialize qlib for dataset: {dataset_ref}")
+
+        # Step 3: Generate model configuration
+        await monitor.update_progress(process_id, 37.5, f"Generating {handler} model configuration", 3)
 
         # Generate unique model ID
         model_id = f"{handler}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
@@ -103,6 +126,9 @@ async def train_model(
             },
         }
 
+        # Step 4: Load dataset
+        await monitor.update_progress(process_id, 50.0, f"Loading dataset '{dataset_ref}'", 4)
+
         # Initialize experiment
         with R.start(experiment_name=f"crypto_{handler}", recorder_name=model_id):
             # Initialize model
@@ -111,9 +137,15 @@ async def train_model(
             # Initialize dataset
             dataset = init_instance_by_config(dataset_config)
 
+            # Step 5: Train model
+            await monitor.update_progress(process_id, 62.5, f"Training {handler} model '{model_id}'", 5)
+
             # Train model
             logger.info(f"Training {handler} model: {model_id}")
             model.fit(dataset)
+
+            # Step 6: Generate predictions
+            await monitor.update_progress(process_id, 75.0, f"Generating predictions for validation", 6)
 
             # Make predictions
             predictions = model.predict(dataset)
@@ -122,11 +154,17 @@ async def train_model(
             sr = SignalRecord(model, dataset, recorder=R.get_recorder())
             sr.generate()
 
+            # Step 7: Save model
+            await monitor.update_progress(process_id, 87.5, f"Saving model to disk", 7)
+
             # Save model
             model_path = models_dir / f"{model_id}.pkl"
             import pickle
             with open(model_path, 'wb') as f:
                 pickle.dump(model, f)
+
+            # Step 8: Record results
+            await monitor.update_progress(process_id, 95.0, f"Recording training results", 8)
 
             # Get recorder info
             recorder_info = R.get_recorder().list_metrics()
@@ -148,11 +186,15 @@ async def train_model(
             with open(meta_file, 'w') as f:
                 json.dump(result, f, indent=2, default=str)
 
+            # Complete process monitoring
+            await monitor.complete_process(process_id, result)
+
             logger.info(f"Model trained successfully: {model_id}")
             return result
 
     except Exception as e:
         logger.error(f"Error training model: {e}", exc_info=True)
+        await monitor.fail_process(process_id, str(e))
         return {
             "error": str(e),
             "dataset": dataset_ref,

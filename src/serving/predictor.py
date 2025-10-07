@@ -9,6 +9,9 @@ from pathlib import Path
 from typing import Dict, Any, List
 from datetime import datetime
 import pandas as pd
+import uuid
+
+from ..monitoring.process_monitor import monitor, ProcessStatus
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +27,16 @@ async def predict_today(model_id: str, dataset_ref: str) -> Dict[str, Any]:
     Returns:
         Predictions with confidence scores
     """
+    # Generate process ID
+    process_id = f"prediction_{uuid.uuid4().hex[:8]}"
+
+    # Total steps: validation, init, load_model, load_config, create_dataset, predict, save
+    total_steps = 7
+
     try:
+        # Start process monitoring
+        await monitor.start_process(process_id, "prediction", total_steps=total_steps)
+
         from qlib.data.dataset import DatasetH
         from qlib.utils import init_instance_by_config
         from ..utils.qlib_state import init_qlib_clean_async
@@ -33,9 +45,13 @@ async def predict_today(model_id: str, dataset_ref: str) -> Dict[str, Any]:
         models_dir = project_root / "models" / "trained"
         qlib_dir = project_root / "data" / "qlib" / dataset_ref
 
+        # Step 1: Validate dataset
+        await monitor.update_progress(process_id, 14.3, f"Validating dataset '{dataset_ref}'", 1)
+
         # Validate dataset exists
         if not qlib_dir.exists():
             logger.error(f"Dataset directory not found: {qlib_dir}")
+            await monitor.fail_process(process_id, f"Dataset '{dataset_ref}' not found at {qlib_dir}")
             return {
                 "error": f"Dataset '{dataset_ref}' not found at {qlib_dir}",
                 "status": "failed",
@@ -46,12 +62,16 @@ async def predict_today(model_id: str, dataset_ref: str) -> Dict[str, Any]:
         # Validate dataset has required structure
         if not (qlib_dir / "calendars").exists() and not (qlib_dir / "instruments").exists():
             logger.error(f"Dataset directory exists but appears empty: {qlib_dir}")
+            await monitor.fail_process(process_id, f"Dataset '{dataset_ref}' appears to be empty or invalid")
             return {
                 "error": f"Dataset '{dataset_ref}' appears to be empty or invalid",
                 "status": "failed",
                 "dataset": dataset_ref,
                 "model_id": model_id
             }
+
+        # Step 2: Initialize Qlib
+        await monitor.update_progress(process_id, 28.6, f"Initializing Qlib with dataset '{dataset_ref}'", 2)
 
         # Initialize Qlib with clean cache (prevents state bleed)
         # Use async version for concurrency protection
@@ -61,11 +81,16 @@ async def predict_today(model_id: str, dataset_ref: str) -> Dict[str, Any]:
             auto_mount=True
         )
         if not success:
+            await monitor.fail_process(process_id, f"Failed to initialize qlib for predictions: {model_id}")
             raise RuntimeError(f"Failed to initialize qlib for predictions: {model_id}")
+
+        # Step 3: Load model
+        await monitor.update_progress(process_id, 42.9, f"Loading model '{model_id}'", 3)
 
         # Load model
         model_path = models_dir / f"{model_id}.pkl"
         if not model_path.exists():
+            await monitor.fail_process(process_id, f"Model {model_id} not found")
             return {"error": f"Model {model_id} not found"}
 
         with open(model_path, 'rb') as f:
@@ -78,6 +103,9 @@ async def predict_today(model_id: str, dataset_ref: str) -> Dict[str, Any]:
 
         # Get latest data for prediction
         today = datetime.now().strftime("%Y-%m-%d")
+
+        # Step 4: Load feature configuration
+        await monitor.update_progress(process_id, 57.1, f"Loading feature configuration", 4)
 
         # Load feature configuration
         config_dir = project_root / "config" / "features"
@@ -96,6 +124,9 @@ async def predict_today(model_id: str, dataset_ref: str) -> Dict[str, Any]:
         handler_config["kwargs"]["start_time"] = today
         handler_config["kwargs"]["end_time"] = today
 
+        # Step 5: Create dataset
+        await monitor.update_progress(process_id, 71.4, f"Creating dataset for {today}", 5)
+
         # Create dataset for prediction
         dataset_config = {
             "class": "DatasetH",
@@ -109,6 +140,9 @@ async def predict_today(model_id: str, dataset_ref: str) -> Dict[str, Any]:
         }
 
         dataset = init_instance_by_config(dataset_config)
+
+        # Step 6: Generate predictions
+        await monitor.update_progress(process_id, 85.7, f"Generating predictions for {today}", 6)
 
         # Make predictions
         logger.info(f"Generating predictions for {today} using model {model_id}")
@@ -151,6 +185,9 @@ async def predict_today(model_id: str, dataset_ref: str) -> Dict[str, Any]:
             "status": "success"
         }
 
+        # Step 7: Save predictions
+        await monitor.update_progress(process_id, 95.0, f"Saving {len(top_predictions)} predictions", 7)
+
         # Save predictions
         pred_dir = project_root / "predictions"
         pred_dir.mkdir(parents=True, exist_ok=True)
@@ -159,11 +196,15 @@ async def predict_today(model_id: str, dataset_ref: str) -> Dict[str, Any]:
         with open(pred_file, 'w') as f:
             json.dump(result, f, indent=2, default=str)
 
+        # Complete process monitoring
+        await monitor.complete_process(process_id, result)
+
         logger.info(f"Generated {len(top_predictions)} predictions for {today}")
         return result
 
     except Exception as e:
         logger.error(f"Error generating predictions: {e}", exc_info=True)
+        await monitor.fail_process(process_id, str(e))
         return {
             "error": str(e),
             "model_id": model_id,

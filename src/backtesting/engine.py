@@ -10,6 +10,9 @@ from typing import Dict, Any
 from datetime import datetime
 import pandas as pd
 import numpy as np
+import uuid
+
+from ..monitoring.process_monitor import monitor, ProcessStatus
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +37,16 @@ async def run_backtest(
     Returns:
         Backtest results with performance metrics
     """
+    # Generate process ID
+    process_id = f"backtest_{uuid.uuid4().hex[:8]}"
+
+    # Total steps: validation, init, load_model, config, run_backtest, calc_metrics, save
+    total_steps = 7
+
     try:
+        # Start process monitoring
+        await monitor.start_process(process_id, "backtest", total_steps=total_steps)
+
         from qlib.backtest import backtest as qlib_backtest, executor
         from qlib.contrib.strategy import TopkDropoutStrategy
         from qlib.contrib.evaluate import risk_analysis
@@ -45,9 +57,13 @@ async def run_backtest(
         models_dir = project_root / "models" / "trained"
         qlib_dir = project_root / "data" / "qlib" / dataset_ref
 
+        # Step 1: Validate dataset
+        await monitor.update_progress(process_id, 14.3, f"Validating dataset '{dataset_ref}'", 1)
+
         # Validate dataset exists
         if not qlib_dir.exists():
             logger.error(f"Dataset directory not found: {qlib_dir}")
+            await monitor.fail_process(process_id, f"Dataset '{dataset_ref}' not found at {qlib_dir}")
             return {
                 "error": f"Dataset '{dataset_ref}' not found at {qlib_dir}",
                 "status": "failed",
@@ -58,12 +74,16 @@ async def run_backtest(
         # Validate dataset has required structure
         if not (qlib_dir / "calendars").exists() and not (qlib_dir / "instruments").exists():
             logger.error(f"Dataset directory exists but appears empty: {qlib_dir}")
+            await monitor.fail_process(process_id, f"Dataset '{dataset_ref}' appears to be empty or invalid")
             return {
                 "error": f"Dataset '{dataset_ref}' appears to be empty or invalid",
                 "status": "failed",
                 "dataset": dataset_ref,
                 "model_id": model_id
             }
+
+        # Step 2: Initialize Qlib
+        await monitor.update_progress(process_id, 28.6, f"Initializing Qlib with dataset '{dataset_ref}'", 2)
 
         # Initialize Qlib with clean cache (prevents state bleed)
         # Use async version for concurrency protection
@@ -73,11 +93,16 @@ async def run_backtest(
             auto_mount=True
         )
         if not success:
+            await monitor.fail_process(process_id, f"Failed to initialize qlib for backtest: {model_id}")
             raise RuntimeError(f"Failed to initialize qlib for backtest: {model_id}")
+
+        # Step 3: Load model
+        await monitor.update_progress(process_id, 42.9, f"Loading model '{model_id}'", 3)
 
         # Load model
         model_path = models_dir / f"{model_id}.pkl"
         if not model_path.exists():
+            await monitor.fail_process(process_id, f"Model {model_id} not found")
             return {"error": f"Model {model_id} not found"}
 
         with open(model_path, 'rb') as f:
@@ -87,6 +112,9 @@ async def run_backtest(
         meta_file = models_dir / f"{model_id}_meta.json"
         with open(meta_file) as f:
             model_meta = json.load(f)
+
+        # Step 4: Configure backtest
+        await monitor.update_progress(process_id, 57.1, f"Configuring backtest (costs={costs}, rebalance={rebalance})", 4)
 
         # Get transaction costs
         cost_config = get_cost_config(costs, funding)
@@ -115,6 +143,9 @@ async def run_backtest(
             },
         }
 
+        # Step 5: Run backtest
+        await monitor.update_progress(process_id, 71.4, f"Running backtest simulation (2023-01-01 to 2024-12-31)", 5)
+
         # Run backtest
         logger.info(f"Running backtest for model {model_id}...")
 
@@ -125,6 +156,9 @@ async def run_backtest(
             executor=executor_config,
             benchmark="BTC_USDT",
         )
+
+        # Step 6: Calculate metrics
+        await monitor.update_progress(process_id, 85.7, f"Calculating performance metrics", 6)
 
         # Calculate performance metrics
         analysis = calculate_crypto_metrics(portfolio_metric_dict, indicator_dict)
@@ -157,6 +191,9 @@ async def run_backtest(
             "completed_at": datetime.now().isoformat()
         }
 
+        # Step 7: Save results
+        await monitor.update_progress(process_id, 95.0, f"Saving backtest results", 7)
+
         # Save backtest results
         bt_dir = project_root / "backtests"
         bt_dir.mkdir(parents=True, exist_ok=True)
@@ -165,11 +202,15 @@ async def run_backtest(
         with open(bt_file, 'w') as f:
             json.dump(result, f, indent=2, default=str)
 
+        # Complete process monitoring
+        await monitor.complete_process(process_id, result)
+
         logger.info(f"Backtest completed for {model_id}: Sharpe={result['metrics']['sharpe_ratio']:.3f}")
         return result
 
     except Exception as e:
         logger.error(f"Error running backtest: {e}", exc_info=True)
+        await monitor.fail_process(process_id, str(e))
         return {
             "error": str(e),
             "model_id": model_id,
