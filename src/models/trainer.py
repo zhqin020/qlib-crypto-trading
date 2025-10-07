@@ -34,7 +34,7 @@ async def train_model(
         from qlib.workflow import R
         from qlib.workflow.record_temp import SignalRecord
         from qlib.utils import init_instance_by_config
-        from ..utils.qlib_state import init_qlib_clean
+        from ..utils.qlib_state import init_qlib_clean_async
 
         project_root = Path(__file__).parent.parent.parent
         qlib_dir = project_root / "data" / "qlib" / dataset_ref
@@ -60,7 +60,8 @@ async def train_model(
             }
 
         # Initialize Qlib with clean cache (prevents state bleed)
-        success = init_qlib_clean(
+        # Use async version for concurrency protection
+        success = await init_qlib_clean_async(
             provider_uri=str(qlib_dir),
             region="cn",
             expression_cache=None,

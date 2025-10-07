@@ -39,7 +39,7 @@ async def run_backtest(
         from qlib.contrib.strategy import TopkDropoutStrategy
         from qlib.contrib.evaluate import risk_analysis
         from qlib.utils import init_instance_by_config
-        from ..utils.qlib_state import init_qlib_clean
+        from ..utils.qlib_state import init_qlib_clean_async
 
         project_root = Path(__file__).parent.parent.parent
         models_dir = project_root / "models" / "trained"
@@ -66,7 +66,8 @@ async def run_backtest(
             }
 
         # Initialize Qlib with clean cache (prevents state bleed)
-        success = init_qlib_clean(
+        # Use async version for concurrency protection
+        success = await init_qlib_clean_async(
             provider_uri=str(qlib_dir),
             region="cn",
             auto_mount=True

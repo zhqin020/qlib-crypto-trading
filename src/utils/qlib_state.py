@@ -130,9 +130,7 @@ async def init_qlib_clean_async(
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
             None,
-            init_qlib_clean,
-            provider_uri,
-            region
+            lambda: init_qlib_clean(provider_uri, region, **kwargs)
         )
         logger.info(f"Qlib initialization completed: {result}")
         return result

@@ -45,7 +45,7 @@ def create_test_data():
 
 def convert_and_debug():
     """Convert data and debug each step"""
-    from src.data_pipeline.qlib_converter import convert_crypto_data
+    from src.data_pipeline.official_qlib_converter import convert_crypto_data_official as convert_crypto_data
 
     temp_dir, csv_dir, qlib_dir, original_df = create_test_data()
 
