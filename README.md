@@ -13,6 +13,8 @@ A comprehensive AI-powered cryptocurrency trading and research platform built on
 - **MCP Server Integration**: Full control via MCP client interface
 - **Web Dashboard**: Beautiful UI for monitoring and control
 - **REST API**: Complete FastAPI-based API with WebSocket support
+- **Real-Time Process Monitoring**: Live progress tracking with WebSocket updates
+- **Production-Ready Security**: API key authentication, input validation, rate limiting
 
 ### 📊 Supported Models
 - **LightGBM**: Fast gradient boosting (default)
@@ -52,9 +54,9 @@ qlib-2/
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Python 3.8+
+- Python 3.8-3.13
 - Docker & Docker Compose (optional)
-- 4GB+ RAM
+- 4GB+ RAM (8GB+ recommended)
 - 10GB+ disk space
 
 ### Installation
@@ -229,6 +231,60 @@ result = await client.call_tool(
 )
 ```
 
+## 📊 Process Monitoring
+
+All long-running operations (training, backtesting, predictions) are tracked in real-time:
+
+### Via REST API
+
+```bash
+# Get all processes
+curl http://localhost:5100/api/processes
+
+# Get running processes only
+curl http://localhost:5100/api/processes/running
+
+# Get specific process
+curl http://localhost:5100/api/processes/training_abc123
+
+# Cancel running process
+curl -X DELETE http://localhost:5100/api/processes/training_abc123
+
+# Get process logs
+curl http://localhost:5100/api/processes/training_abc123/logs?limit=100
+```
+
+### Via WebSocket (Real-Time Updates)
+
+```javascript
+// Monitor all processes
+const ws = new WebSocket('ws://localhost:5100/ws/processes?api_key=YOUR_KEY');
+
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  console.log('Process update:', data.processes);
+};
+
+// Monitor specific process
+const processWs = new WebSocket('ws://localhost:5100/ws/processes/training_abc123?api_key=YOUR_KEY');
+
+processWs.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  console.log('Progress:', data.data.metrics.progress_percent + '%');
+  console.log('Status:', data.data.status);
+};
+```
+
+### Process Information
+
+Each process includes:
+- **Status**: `pending`, `running`, `completed`, `failed`, `cancelled`
+- **Progress**: Current percentage (0-100)
+- **Steps**: Current step and total steps
+- **Logs**: Timestamped log messages
+- **Metrics**: CPU usage, memory usage, duration
+- **Result**: Final results or error details
+
 ## 📡 REST API Examples
 
 ### Get Real-Time Quote
@@ -306,6 +362,56 @@ The platform calculates crypto-specific metrics:
 - **Information Ratio**: Excess return consistency
 - **Win Rate**: Percentage of profitable periods
 
+## 🔒 Security Features
+
+### WebSocket Authentication
+
+All WebSocket endpoints require API key authentication:
+
+**Generate API Key:**
+```bash
+python3 -c "from src.ui.security import generate_api_key; print(generate_api_key())"
+```
+
+**Configure API Keys:**
+```bash
+# Add to .env
+WEBSOCKET_API_KEYS=qlib_key1,qlib_key2,qlib_key3
+```
+
+**Client Connection:**
+```javascript
+// Via query parameter
+const ws = new WebSocket('ws://localhost:5100/ws/events?api_key=YOUR_KEY');
+
+// Via header (Python)
+import websockets
+headers = {"Authorization": "Bearer YOUR_KEY"}
+ws = await websockets.connect('ws://localhost:5100/ws/events', extra_headers=headers)
+```
+
+### Security Features
+
+- ✅ **API Key Authentication**: All WebSocket endpoints protected
+- ✅ **Input Validation**: Comprehensive validation with Pydantic models
+- ✅ **Path Traversal Prevention**: Whitelist validation on all file operations
+- ✅ **Rate Limiting**: 100 messages/minute per user
+- ✅ **Connection Limits**: Maximum 10 concurrent connections per user
+- ✅ **Message Size Limits**: 1MB maximum per message
+- ✅ **Heartbeat Timeout**: 60-second connection timeout
+- ✅ **Failed Auth Tracking**: Automatic blocking after 5 failed attempts
+- ✅ **No Information Leakage**: Generic error messages
+
+### Secured Endpoints
+
+All WebSocket endpoints require authentication:
+- `/ws/events` - Real-time platform events
+- `/ws/processes` - All process updates
+- `/ws/processes/{process_id}` - Specific process monitoring
+- `/ws/market-data` - Real-time market quotes
+
+See [WEBSOCKET_SECURITY.md](WEBSOCKET_SECURITY.md) for complete documentation.
+
 ## 🔧 Configuration
 
 ### Environment Variables
@@ -318,7 +424,10 @@ API_HOST=0.0.0.0
 API_PORT=5100
 
 # Database (optional)
-DATABASE_URL=postgresql://user:pass@localhost:5110/qlib_crypto
+DATABASE_URL=postgresql://qlib:qlib_password@postgres:5110/qlib_crypto
+
+# WebSocket Security (REQUIRED for WebSocket endpoints)
+WEBSOCKET_API_KEYS=your_generated_key_here
 
 # Exchange API Keys (for authenticated endpoints)
 BINANCE_API_KEY=your_key

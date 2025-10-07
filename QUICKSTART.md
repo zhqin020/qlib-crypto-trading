@@ -23,6 +23,9 @@ pip install -r requirements.txt
 
 # Create directory structure
 make setup
+
+# Generate API key for WebSocket endpoints
+python3 -c "from src.ui.security import generate_api_key; print('WEBSOCKET_API_KEYS=' + generate_api_key())" >> .env
 ```
 
 ## State Management
@@ -145,6 +148,7 @@ You've just:
 - ✅ Trained an AI model
 - ✅ Backtested the strategy
 - ✅ Generated trading signals
+- ✅ Generated secure API keys
 
 ## What's Next?
 
@@ -155,6 +159,37 @@ make api
 ```
 
 Visit http://localhost:5100 for the dashboard and API docs.
+
+### Using WebSocket Real-Time Updates
+
+All WebSocket endpoints require the API key you generated during setup:
+
+```javascript
+// Connect to real-time events
+const apiKey = 'YOUR_KEY_FROM_ENV';  // From .env WEBSOCKET_API_KEYS
+const ws = new WebSocket(`ws://localhost:5100/ws/events?api_key=${apiKey}`);
+
+ws.onopen = () => console.log('Connected to platform events');
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  console.log('Event:', data);
+};
+
+// Monitor specific training process
+const trainingWs = new WebSocket(`ws://localhost:5100/ws/processes/training_abc123?api_key=${apiKey}`);
+trainingWs.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  console.log(`Progress: ${data.data.metrics.progress_percent}%`);
+};
+```
+
+**Available WebSocket Endpoints:**
+- `/ws/events` - Platform-wide events and notifications
+- `/ws/processes` - All process updates (training, backtesting, predictions)
+- `/ws/processes/{process_id}` - Specific process real-time updates
+- `/ws/market-data` - Real-time market quotes (subscribe to symbols)
+
+See [WEBSOCKET_SECURITY.md](WEBSOCKET_SECURITY.md) for complete documentation.
 
 ### Try Different Models
 
