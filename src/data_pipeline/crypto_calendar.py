@@ -1,12 +1,11 @@
-"""
-Crypto Trading Calendar - 24/7 trading support
-Unlike stock markets, crypto markets never close
-"""
+"""Crypto Trading Calendar - 24/7 trading support."""
+
+import argparse
+import logging
+from datetime import datetime, timedelta
+from typing import List, Optional
 
 import pandas as pd
-from datetime import datetime, timedelta
-from typing import List
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +70,12 @@ class CryptoCalendar:
         }
 
 
-def generate_crypto_calendars(output_dir: str = "data/qlib/calendars"):
+def generate_crypto_calendars(
+    output_dir: str = "data/qlib/calendars",
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    frequencies: Optional[List[str]] = None,
+):
     """
     Generate crypto calendars for different frequencies
 
@@ -84,13 +88,16 @@ def generate_crypto_calendars(output_dir: str = "data/qlib/calendars"):
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    frequencies = ['1d', '1h', '5m', '1m']
+    freq_list = frequencies or ['1d', '1h', '5m', '1m']
 
-    # Generate 5 years of calendar data
-    start_date = "2019-01-01"
-    end_date = "2024-12-31"
+    # Default to the last five years if dates are not provided
+    if end_date is None:
+        end_date = datetime.utcnow().strftime("%Y-%m-%d")
+    if start_date is None:
+        default_start = datetime.strptime(end_date, "%Y-%m-%d") - timedelta(days=5 * 365)
+        start_date = default_start.strftime("%Y-%m-%d")
 
-    for freq in frequencies:
+    for freq in freq_list:
         calendar = CryptoCalendar(freq)
         dates = calendar.get_trading_dates(start_date, end_date)
 
@@ -110,4 +117,21 @@ def generate_crypto_calendars(output_dir: str = "data/qlib/calendars"):
 
 
 if __name__ == "__main__":
-    generate_crypto_calendars()
+    parser = argparse.ArgumentParser(description="Generate Qlib-compatible crypto calendars")
+    parser.add_argument("--output-dir", default="data/qlib/calendars", help="Directory to write calendar CSV/metadata")
+    parser.add_argument("--start", dest="start_date", help="Inclusive start date (YYYY-MM-DD)")
+    parser.add_argument("--end", dest="end_date", help="Inclusive end date (YYYY-MM-DD)")
+    parser.add_argument(
+        "--frequencies",
+        nargs="+",
+        help="List of frequencies to generate (default: 1d 1h 5m 1m)",
+    )
+
+    cli_args = parser.parse_args()
+
+    generate_crypto_calendars(
+        output_dir=cli_args.output_dir,
+        start_date=cli_args.start_date,
+        end_date=cli_args.end_date,
+        frequencies=cli_args.frequencies,
+    )

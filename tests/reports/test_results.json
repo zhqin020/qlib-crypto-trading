@@ -1,0 +1,253 @@
+{
+  "summary": {
+    "total": 28,
+    "passed": 28,
+    "failed": 0,
+    "pass_rate": 100.0,
+    "timestamp": "2025-10-06T02:35:48.394926"
+  },
+  "results": {
+    "data_pipeline": {
+      "Dataset directory exists": {
+        "passed": true,
+        "details": "/Users/chadwyatt/Code/trading/qlib-2/data/qlib/crypto_btc_daily",
+        "timestamp": "2025-10-06T02:35:41.890097"
+      },
+      "Directory calendars exists": {
+        "passed": true,
+        "details": null,
+        "timestamp": "2025-10-06T02:35:41.890191"
+      },
+      "Directory features exists": {
+        "passed": true,
+        "details": null,
+        "timestamp": "2025-10-06T02:35:41.890235"
+      },
+      "Directory instruments exists": {
+        "passed": true,
+        "details": null,
+        "timestamp": "2025-10-06T02:35:41.890251"
+      },
+      "Instruments loaded": {
+        "passed": true,
+        "details": "Found 2 instruments",
+        "timestamp": "2025-10-06T02:35:41.890578"
+      },
+      "Feature data exists": {
+        "passed": true,
+        "details": "Found 1 symbols",
+        "timestamp": "2025-10-06T02:35:41.890659"
+      },
+      "Crypto calendar registered": {
+        "passed": true,
+        "details": "24/7 calendar provider",
+        "timestamp": "2025-10-06T02:35:44.606199"
+      },
+      "Qlib initialized": {
+        "passed": true,
+        "details": "/Users/chadwyatt/Code/trading/qlib-2/data/qlib/crypto_btc_daily",
+        "timestamp": "2025-10-06T02:35:44.963301"
+      }
+    },
+    "feature_sets": {
+      "Alpha158 config valid": {
+        "passed": true,
+        "details": {
+          "class": "Alpha158",
+          "module_path": "qlib.contrib.data.handler",
+          "kwargs": {
+            "start_time": null,
+            "end_time": null,
+            "fit_start_time": null,
+            "fit_end_time": null,
+            "instruments": "all",
+            "infer_processors": [
+              {
+                "class": "RobustZScoreNorm",
+                "kwargs": {
+                  "fields_group": "feature",
+                  "clip_outlier": true
+                }
+              },
+              {
+                "class": "Fillna",
+                "kwargs": {
+                  "fields_group": "feature"
+                }
+              }
+            ],
+            "learn_processors": [
+              {
+                "class": "DropnaLabel"
+              },
+              {
+                "class": "CSRankNorm",
+                "kwargs": {
+                  "fields_group": "label"
+                }
+              }
+            ],
+            "label": [
+              "Ref($close, -1) / $close - 1"
+            ]
+          }
+        },
+        "timestamp": "2025-10-06T02:35:41.891486"
+      },
+      "Alpha360 config valid": {
+        "passed": true,
+        "details": {
+          "class": "Alpha360",
+          "module_path": "qlib.contrib.data.handler",
+          "kwargs": {
+            "start_time": null,
+            "end_time": null,
+            "fit_start_time": null,
+            "fit_end_time": null,
+            "instruments": "all",
+            "infer_processors": [
+              {
+                "class": "RobustZScoreNorm",
+                "kwargs": {
+                  "fields_group": "feature",
+                  "clip_outlier": true
+                }
+              },
+              {
+                "class": "Fillna",
+                "kwargs": {
+                  "fields_group": "feature"
+                }
+              }
+            ],
+            "learn_processors": [
+              {
+                "class": "DropnaLabel"
+              },
+              {
+                "class": "CSRankNorm",
+                "kwargs": {
+                  "fields_group": "label"
+                }
+              }
+            ]
+          }
+        },
+        "timestamp": "2025-10-06T02:35:41.891493"
+      },
+      "Fit times configured": {
+        "passed": true,
+        "details": "Dynamic fit times",
+        "timestamp": "2025-10-06T02:35:41.891497"
+      }
+    },
+    "models": {
+      "LIGHTGBM config": {
+        "passed": true,
+        "details": "LGBModel",
+        "timestamp": "2025-10-06T02:35:41.892061"
+      },
+      "XGBOOST config": {
+        "passed": true,
+        "details": "XGBModel",
+        "timestamp": "2025-10-06T02:35:41.892069"
+      },
+      "GRU config": {
+        "passed": true,
+        "details": "GRU",
+        "timestamp": "2025-10-06T02:35:41.892075"
+      },
+      "LSTM config": {
+        "passed": true,
+        "details": "LSTM",
+        "timestamp": "2025-10-06T02:35:41.892081"
+      },
+      "TRANSFORMER config": {
+        "passed": true,
+        "details": "Transformer",
+        "timestamp": "2025-10-06T02:35:41.892088"
+      },
+      "CNN_LSTM config": {
+        "passed": true,
+        "details": "CNN",
+        "timestamp": "2025-10-06T02:35:41.892095"
+      },
+      "LINEAR config": {
+        "passed": true,
+        "details": "LinearModel",
+        "timestamp": "2025-10-06T02:35:41.892100"
+      },
+      "SVM config": {
+        "passed": true,
+        "details": "SVMModel",
+        "timestamp": "2025-10-06T02:35:41.892105"
+      },
+      "KNN config": {
+        "passed": true,
+        "details": "KNNModel",
+        "timestamp": "2025-10-06T02:35:41.892109"
+      }
+    },
+    "backtests": {},
+    "mcp_tools": {
+      "market_data_get_quote": {
+        "passed": true,
+        "details": "Price: $122804.23",
+        "timestamp": "2025-10-06T02:35:47.871311"
+      },
+      "market_data_get_historical": {
+        "passed": true,
+        "details": "Rows: 7",
+        "timestamp": "2025-10-06T02:35:48.303664"
+      }
+    },
+    "ui_api": {
+      "List datasets": {
+        "passed": true,
+        "details": "Status: 200",
+        "timestamp": "2025-10-06T02:35:48.390735"
+      },
+      "List models": {
+        "passed": true,
+        "details": "Status: 200",
+        "timestamp": "2025-10-06T02:35:48.392220"
+      },
+      "Health check": {
+        "passed": true,
+        "details": "Status: 200",
+        "timestamp": "2025-10-06T02:35:48.394584"
+      }
+    },
+    "metrics": {
+      "Required metrics defined": {
+        "passed": true,
+        "details": [
+          "mean",
+          "std",
+          "annualized_return",
+          "information_ratio",
+          "max_drawdown"
+        ],
+        "timestamp": "2025-10-06T02:35:48.394680"
+      },
+      "Trading costs configured": {
+        "passed": true,
+        "details": {
+          "open_cost": 0.0005,
+          "close_cost": 0.0015,
+          "min_cost": 5
+        },
+        "timestamp": "2025-10-06T02:35:48.394685"
+      },
+      "Target thresholds set": {
+        "passed": true,
+        "details": {
+          "information_ratio": ">1.5 (excellent) or >1.0 (good)",
+          "max_drawdown": "<10% (excellent) or <20% (acceptable)",
+          "sharpe_ratio": ">2.0 (excellent) or >1.0 (good)"
+        },
+        "timestamp": "2025-10-06T02:35:48.394688"
+      }
+    }
+  }
+}

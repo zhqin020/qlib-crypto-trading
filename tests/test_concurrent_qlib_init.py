@@ -1,7 +1,7 @@
 """
 Test Concurrent Qlib Initialization
 
-This test validates the async lock mechanism in init_qlib_clean_async
+These tests validate the async lock mechanism exposed by qlib_init_context
 to prevent race conditions when multiple tool calls happen simultaneously.
 
 Gap addressed: No concurrent execution tests existed
@@ -18,7 +18,8 @@ import time
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.utils.qlib_state import init_qlib_clean_async, get_qlib_config_info, clear_qlib_cache
+from src.utils.qlib_state import qlib_init_context, get_qlib_config_info, clear_qlib_cache
+import src.utils.qlib_state as qlib_state
 
 # Check if qlib is available
 try:
@@ -68,7 +69,7 @@ class TestConcurrentQlibInit:
     @pytest.mark.asyncio
     async def test_concurrent_init_with_lock(self, setup_test_datasets):
         """
-        Test that concurrent init_qlib_clean_async calls don't race.
+        Test that concurrent qlib initialization calls don't race.
 
         The async lock should serialize initialization, preventing corruption.
         """
@@ -84,19 +85,17 @@ class TestConcurrentQlibInit:
             dataset_path = datasets[dataset_name]
             start_time = time.time()
 
-            success = await init_qlib_clean_async(
+            async with qlib_init_context(
                 provider_uri={"day": str(dataset_path)},
                 region="cn"
-            )
-
-            end_time = time.time()
-            elapsed = end_time - start_time
-
-            config = get_qlib_config_info()
+            ):
+                end_time = time.time()
+                elapsed = end_time - start_time
+                config = get_qlib_config_info()
 
             return {
                 'dataset': dataset_name,
-                'success': success,
+                'success': True,
                 'config': config,
                 'elapsed': elapsed,
                 'start': start_time
@@ -149,18 +148,16 @@ class TestConcurrentQlibInit:
 
         async def init_and_log(dataset_name: str, task_id: int):
             """Initialize and log execution timeline"""
-            execution_log.append(f"Task {task_id} starting")
-
-            success = await init_qlib_clean_async(
+            async with qlib_init_context(
                 provider_uri={"day": str(datasets[dataset_name])},
                 region="cn"
-            )
-
-            # Simulate some work under the lock
-            await asyncio.sleep(0.05)
+            ):
+                execution_log.append(f"Task {task_id} starting")
+                # Simulate some work under the lock
+                await asyncio.sleep(0.05)
 
             execution_log.append(f"Task {task_id} completed")
-            return success
+            return True
 
         # Launch 3 tasks simultaneously
         results = await asyncio.gather(
@@ -222,14 +219,15 @@ class TestConcurrentQlibInit:
         )
 
         # Some may succeed, some may fail, but behavior is unpredictable
-        # The point is to show that init_qlib_clean_async is NEEDED
+        # The point is to show that using the managed context is NEEDED
         # We don't assert anything specific here because races are unpredictable
 
         # Just verify we can recover by using the safe version
-        safe_result = await init_qlib_clean_async(
+        async with qlib_init_context(
             provider_uri={"day": str(datasets['dataset_1'])},
             region="cn"
-        )
+        ):
+            safe_result = True
         assert safe_result, "Failed to recover with safe async init"
 
     @pytest.mark.asyncio
@@ -245,13 +243,14 @@ class TestConcurrentQlibInit:
 
         async def init_and_verify(dataset_name: str):
             """Initialize with dataset and verify correct config"""
-            success = await init_qlib_clean_async(
-                provider_uri={"day": str(datasets[dataset_name])},
-                region="cn"
-            )
-
-            if not success:
-                return False, "Init failed"
+            try:
+                async with qlib_init_context(
+                    provider_uri={"day": str(datasets[dataset_name])},
+                    region="cn"
+                ):
+                    pass
+            except Exception as e:
+                return False, f"Init failed: {e}"
 
             # Verify config
             config = get_qlib_config_info()
@@ -302,27 +301,30 @@ class TestConcurrentQlibInit:
 
         async def quick_init():
             """Quick initialization"""
-            return await init_qlib_clean_async(
+            async with qlib_init_context(
                 provider_uri={"day": str(datasets['dataset_1'])},
                 region="cn"
-            )
+            ):
+                return True
 
         async def slow_init():
             """Slow initialization (simulates heavy operation)"""
-            result = await init_qlib_clean_async(
+            async with qlib_init_context(
                 provider_uri={"day": str(datasets['dataset_2'])},
                 region="cn"
-            )
-            # Simulate slow operation after init
-            await asyncio.sleep(0.1)
-            return result
+            ):
+                # Simulate slow operation after init while holding the lock
+                await asyncio.sleep(0.1)
+                return True
 
         # Run slow init, then multiple quick inits
         # The lock should queue them properly without deadlock
-        results = await asyncio.gather(
-            slow_init(),
-            quick_init(),
-            quick_init(),
+        results = await asyncio.wait_for(
+            asyncio.gather(
+                slow_init(),
+                quick_init(),
+                quick_init(),
+            ),
             timeout=5.0  # Should complete well within 5 seconds
         )
 
@@ -332,3 +334,8 @@ class TestConcurrentQlibInit:
 if __name__ == "__main__":
     # Allow running this test file directly
     pytest.main([__file__, "-v", "-s"])
+# Reset the global lock between tests to avoid cross-event-loop binding errors
+@pytest.fixture(autouse=True)
+def reset_init_lock():
+    qlib_state._init_lock = asyncio.Lock()
+    yield

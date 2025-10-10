@@ -52,6 +52,7 @@ data/qlib/*
 !data/qlib/.gitkeep
 data/processed/*
 !data/processed/.gitkeep
+data/process_state.json
 
 # Models
 models/trained/*
@@ -90,3 +91,6 @@ htmlcov/
 
 # Docker
 postgres_data/
+
+# MLflow
+mlruns/

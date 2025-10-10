@@ -1,0 +1,169 @@
+{
+  "summary": {
+    "total": 5,
+    "passed": 4,
+    "partial": 1,
+    "failed": 0,
+    "timestamp": "2025-10-07T15:26:24.971100"
+  },
+  "scenarios": [
+    {
+      "name": "Complete Training Workflow",
+      "status": "PARTIAL",
+      "steps": [
+        {
+          "step": 1,
+          "action": "Open dashboard",
+          "status": "\u2705"
+        },
+        {
+          "step": 2,
+          "action": "View datasets (found 0)",
+          "status": "\u26a0\ufe0f"
+        },
+        {
+          "step": 3,
+          "action": "Start training",
+          "status": "\u2705",
+          "process_id": "training_b400b31c"
+        },
+        {
+          "step": 4,
+          "action": "Receive WebSocket updates",
+          "status": "\u2705"
+        },
+        {
+          "step": 5,
+          "action": "Process completed (failed)",
+          "status": "\u2705"
+        }
+      ],
+      "duration": 0.9639739990234375,
+      "timestamp": "2025-10-07T15:26:21.421201"
+    },
+    {
+      "name": "Concurrent Processes",
+      "status": "PASS",
+      "steps": [
+        {
+          "step": 1,
+          "action": "Start process 1",
+          "status": "\u2705",
+          "process_id": "training_2f1212ad"
+        },
+        {
+          "step": 2,
+          "action": "Start process 2",
+          "status": "\u2705",
+          "process_id": "training_2be97c4a"
+        },
+        {
+          "step": 3,
+          "action": "Start process 3",
+          "status": "\u2705",
+          "process_id": "training_3a1b57d4"
+        },
+        {
+          "step": 4,
+          "action": "Verify unique process IDs",
+          "status": "\u2705"
+        },
+        {
+          "step": 5,
+          "action": "Verify all appear in list",
+          "status": "\u2705"
+        }
+      ],
+      "duration": 0.012853145599365234,
+      "timestamp": "2025-10-07T15:26:21.434079"
+    },
+    {
+      "name": "Cancel Process",
+      "status": "PASS",
+      "steps": [
+        {
+          "step": 1,
+          "action": "Start process",
+          "status": "\u2705",
+          "process_id": "training_fccb69fe"
+        },
+        {
+          "step": 2,
+          "action": "Cancel process",
+          "status": "\u2705",
+          "code": 400
+        },
+        {
+          "step": 3,
+          "action": "Verify cancellation",
+          "status": "\u2705",
+          "final_status": "failed"
+        }
+      ],
+      "duration": 1.016963005065918,
+      "timestamp": "2025-10-07T15:26:22.451067"
+    },
+    {
+      "name": "Error Handling",
+      "status": "PASS",
+      "steps": [
+        {
+          "step": 1,
+          "action": "Start process with invalid dataset",
+          "status": "\u2705"
+        },
+        {
+          "step": 2,
+          "action": "Process fails gracefully",
+          "status": "\u2705"
+        },
+        {
+          "step": 3,
+          "action": "Error message clarity",
+          "status": "\u26a0\ufe0f"
+        },
+        {
+          "step": 4,
+          "action": "System remains stable",
+          "status": "\u2705"
+        }
+      ],
+      "duration": 2.0127780437469482,
+      "timestamp": "2025-10-07T15:26:24.463867"
+    },
+    {
+      "name": "WebSocket Reconnection",
+      "status": "PASS",
+      "steps": [
+        {
+          "step": 1,
+          "action": "Initial connection",
+          "status": "\u2705"
+        },
+        {
+          "step": 2,
+          "action": "Receive initial data",
+          "status": "\u2705"
+        },
+        {
+          "step": 3,
+          "action": "Reconnection",
+          "status": "\u2705"
+        },
+        {
+          "step": 4,
+          "action": "Data after reconnect",
+          "status": "\u2705"
+        }
+      ],
+      "duration": 0.5071196556091309,
+      "timestamp": "2025-10-07T15:26:24.971016"
+    }
+  ],
+  "bugs": [],
+  "ux_notes": [
+    "No datasets available - user would be blocked from training. Need better onboarding.",
+    "Error message could be more user-friendly",
+    "WebSocket reconnection works, but frontend should show 'reconnecting' indicator"
+  ]
+}

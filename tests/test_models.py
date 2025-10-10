@@ -6,8 +6,8 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from models.trainer import get_model_config
-from models.experiments import get_recipe_config
+from src.models.trainer import get_model_config
+from src.models.experiments import get_recipe_config
 
 
 class TestModelConfig:

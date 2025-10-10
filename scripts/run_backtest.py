@@ -3,6 +3,7 @@
 Run backtest for a trained model
 """
 
+import argparse
 import asyncio
 import sys
 from pathlib import Path
@@ -16,21 +17,30 @@ from backtesting.engine import run_backtest
 async def main():
     """Run backtest"""
 
-    if len(sys.argv) < 2:
-        print("Usage: python run_backtest.py <model_id>")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description="Run a backtest for a trained model")
+    parser.add_argument("model_id", help="Model identifier to backtest")
+    parser.add_argument("--dataset", default="crypto", help="Dataset reference (default: crypto)")
+    parser.add_argument("--costs", default="medium", help="Cost level: low, medium, high")
+    parser.add_argument("--rebalance", default="weekly", help="Rebalance frequency (e.g., weekly, monthly)")
+    parser.add_argument("--funding", action="store_true", help="Include funding rate costs")
+    parser.add_argument("--start", dest="start_time", help="Backtest start date (YYYY-MM-DD)")
+    parser.add_argument("--end", dest="end_time", help="Backtest end date (YYYY-MM-DD)")
+    parser.add_argument("--benchmark", help="Benchmark instrument (e.g., BTC_USDT)")
 
-    model_id = sys.argv[1]
+    args = parser.parse_args()
 
-    print(f"Running backtest for model: {model_id}")
+    print(f"Running backtest for model: {args.model_id}")
     print()
 
     result = await run_backtest(
-        model_id=model_id,
-        dataset_ref="crypto",
-        costs="medium",
-        rebalance="weekly",
-        funding=False
+        model_id=args.model_id,
+        dataset_ref=args.dataset,
+        costs=args.costs,
+        rebalance=args.rebalance,
+        funding=args.funding,
+        start_time=args.start_time,
+        end_time=args.end_time,
+        benchmark=args.benchmark,
     )
 
     if "error" in result:

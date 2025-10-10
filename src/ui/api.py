@@ -7,12 +7,27 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from pathlib import Path
+import importlib
 import logging
 import json
+from datetime import datetime, timezone
+
+from .security import validate_api_key, create_ws_token
 
 logger = logging.getLogger(__name__)
+
+
+def _import_module(module_path: str):
+    """Import module supporting both 'pkg' and 'src.pkg' styles."""
+    try:
+        return importlib.import_module(module_path)
+    except ImportError as first_error:
+        try:
+            return importlib.import_module(f"src.{module_path}")
+        except ImportError:
+            raise first_error
 
 app = FastAPI(
     title="Qlib Crypto Trading Platform",
@@ -39,19 +54,33 @@ class DataDownloadRequest(BaseModel):
 
 class TrainModelRequest(BaseModel):
     dataset: str
-    feature_handler: str = "alpha158"
-    model_handler: str = "lightgbm"
+    feature_handler: str
+    model_handler: str
     params: Optional[Dict[str, Any]] = None
+    segments: Optional[Dict[str, Tuple[str, str]]] = None
 
 class BacktestRequest(BaseModel):
     model_id: str
     dataset: str
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    benchmark: Optional[str] = None
     costs: str = "medium"
     rebalance: str = "weekly"
+    funding: bool = False
 
 class PredictionRequest(BaseModel):
     model_id: str
     dataset: str
+
+
+class WebSocketTokenRequest(BaseModel):
+    api_key: str
+
+
+class WebSocketTokenResponse(BaseModel):
+    token: str
+    expires_at: datetime
 
 
 # API Endpoints
@@ -68,11 +97,21 @@ async def health_check():
     return {"status": "healthy", "service": "qlib-crypto-platform"}
 
 
+@app.post("/api/auth/ws-token", response_model=WebSocketTokenResponse)
+async def issue_websocket_token(request: WebSocketTokenRequest):
+    """Exchange an API key for a signed WebSocket token."""
+    user_id = validate_api_key(request.api_key)
+    if not user_id:
+        raise HTTPException(status_code=403, detail="Invalid API key")
+
+    token, expires_at = create_ws_token(user_id)
+    expires_dt = datetime.fromtimestamp(expires_at, tz=timezone.utc)
+    return WebSocketTokenResponse(token=token, expires_at=expires_dt)
+
+
 @app.get("/api/datasets")
 async def list_datasets():
     """List available datasets"""
-    from ..data_pipeline.snapshot import create_snapshot
-
     project_root = Path(__file__).parent.parent.parent
     data_dir = project_root / "data" / "qlib"
 
@@ -96,7 +135,7 @@ async def list_datasets():
 @app.post("/api/data/download")
 async def download_data(request: DataDownloadRequest):
     """Download crypto market data"""
-    from ..data_pipeline.market_data import download_crypto_universe
+    download_crypto_universe = _import_module("data_pipeline.market_data").download_crypto_universe
 
     try:
         result = await download_crypto_universe(
@@ -114,7 +153,7 @@ async def download_data(request: DataDownloadRequest):
 @app.post("/api/data/convert")
 async def convert_data(dataset: str, freq: str = "1d"):
     """Convert CSV data to Qlib format"""
-    from ..data_pipeline.snapshot import create_snapshot
+    create_snapshot = _import_module("data_pipeline.snapshot").create_snapshot
 
     try:
         result = await create_snapshot(
@@ -147,8 +186,8 @@ async def list_models():
 @app.post("/api/models/train")
 async def train_model(request: TrainModelRequest):
     """Train a new model"""
-    from ..models.trainer import train_model as train
-    from ..data_pipeline.features import create_feature_set
+    train = _import_module("models.trainer").train_model
+    create_feature_set = _import_module("data_pipeline.features").create_feature_set
 
     try:
         # Create feature set
@@ -157,12 +196,16 @@ async def train_model(request: TrainModelRequest):
             handler=request.feature_handler
         )
 
+        if "error" in feature_set:
+            raise HTTPException(status_code=400, detail=feature_set["error"])
+
         # Train model
         result = await train(
             dataset_ref=request.dataset,
             feature_set_ref=feature_set["name"],
             handler=request.model_handler,
-            params=request.params
+            params=request.params,
+            segments=request.segments,
         )
 
         return result
@@ -186,14 +229,18 @@ async def get_model(model_id: str):
 @app.post("/api/backtests/run")
 async def run_backtest(request: BacktestRequest):
     """Run backtest for a model"""
-    from ..backtesting.engine import run_backtest as run_bt
+    run_bt = _import_module("backtesting.engine").run_backtest
 
     try:
         result = await run_bt(
             model_id=request.model_id,
             dataset_ref=request.dataset,
+            start_time=request.start_date,
+            end_time=request.end_date,
+            benchmark=request.benchmark,
             costs=request.costs,
-            rebalance=request.rebalance
+            rebalance=request.rebalance,
+            funding=request.funding
         )
         return result
     except Exception as e:
@@ -220,7 +267,7 @@ async def list_backtests():
 @app.post("/api/predictions/generate")
 async def generate_predictions(request: PredictionRequest):
     """Generate predictions for today"""
-    from ..serving.predictor import predict_today
+    predict_today = _import_module("serving.predictor").predict_today
 
     try:
         result = await predict_today(
@@ -269,7 +316,7 @@ async def list_experiments():
 @app.get("/api/market-data/quote/{symbol}")
 async def get_quote(symbol: str, provider: str = "binance"):
     """Get real-time quote"""
-    from ..data_pipeline.market_data import get_quote
+    get_quote = _import_module("data_pipeline.market_data").get_quote
 
     try:
         result = await get_quote(symbol, provider)
@@ -290,7 +337,7 @@ async def websocket_market_data(websocket: WebSocket):
             symbols = data.get("symbols", [])
 
             # Send initial data
-            from ..data_pipeline.market_data import get_quotes_batch
+            get_quotes_batch = _import_module("data_pipeline.market_data").get_quotes_batch
             quotes = await get_quotes_batch(symbols)
 
             await websocket.send_json({

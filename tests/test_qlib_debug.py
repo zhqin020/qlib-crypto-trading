@@ -5,7 +5,9 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 import sys
-import qlib
+import pytest
+
+qlib = pytest.importorskip("qlib", reason="qlib not installed")
 from qlib.data import D
 from qlib.data.data import Cal, Inst
 import struct

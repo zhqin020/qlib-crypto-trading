@@ -4,20 +4,48 @@ Supports multiple exchanges via CCXT
 """
 
 import asyncio
-import ccxt
-import pandas as pd
-from datetime import datetime, timedelta
-from typing import Optional, List, Dict, Any
 import logging
+from datetime import datetime, timedelta
+from typing import Optional, List, Dict, Any, TYPE_CHECKING
+
+import pandas as pd
+
+try:  # Optional dependency: ccxt
+    import ccxt  # type: ignore
+except ModuleNotFoundError:  # pragma: no cover - executed when ccxt is unavailable
+    ccxt = None  # type: ignore[assignment]
+
+from .validation import (
+    validate_symbol,
+    validate_symbols,
+    validate_date_range,
+    validate_interval,
+    validate_provider,
+    ValidationError
+)
 
 logger = logging.getLogger(__name__)
 
-# Exchange instances cache
-_exchanges: Dict[str, ccxt.Exchange] = {}
+# Exchange instances cache (populated lazily when ccxt is available)
+_exchanges: Dict[str, Any] = {}
 
 
-def get_exchange(provider: str = "binance") -> ccxt.Exchange:
+if TYPE_CHECKING:  # pragma: no cover - hints only
+    from ccxt import Exchange  # type: ignore
+
+
+def _require_ccxt() -> None:
+    """Ensure ccxt is available before performing market operations."""
+    if ccxt is None:
+        raise RuntimeError(
+            "ccxt is required for market data operations. Install ccxt or skip these tests."
+        )
+
+
+def get_exchange(provider: str = "binance") -> "Exchange":
     """Get or create exchange instance"""
+    _require_ccxt()
+
     if provider not in _exchanges:
         exchange_class = getattr(ccxt, provider)
         _exchanges[provider] = exchange_class({
@@ -37,9 +65,18 @@ async def get_quote(symbol: str, provider: Optional[str] = None) -> Dict[str, An
 
     Returns:
         Quote data with price, volume, bid, ask, etc.
+
+    Raises:
+        ValidationError: If input validation fails
     """
     try:
+        # Validate inputs
+        symbol = validate_symbol(symbol)
         provider = provider or "binance"
+        provider = validate_provider(provider)
+
+        logger.debug(f"Fetching quote: symbol={symbol}, provider={provider}")
+
         exchange = get_exchange(provider)
 
         ticker = await asyncio.to_thread(exchange.fetch_ticker, symbol)
@@ -57,16 +94,42 @@ async def get_quote(symbol: str, provider: Optional[str] = None) -> Dict[str, An
             "volume": ticker.get('baseVolume'),
             "quote_volume": ticker.get('quoteVolume'),
         }
+    except ValidationError:
+        raise
     except Exception as e:
         logger.error(f"Error fetching quote for {symbol}: {e}")
         raise
 
 
 async def get_quotes_batch(symbols: List[str], provider: Optional[str] = None) -> List[Dict[str, Any]]:
-    """Get quotes for multiple symbols in parallel"""
-    provider = provider or "binance"
-    tasks = [get_quote(symbol, provider) for symbol in symbols]
-    return await asyncio.gather(*tasks, return_exceptions=True)
+    """
+    Get quotes for multiple symbols in parallel
+
+    Args:
+        symbols: List of trading pairs
+        provider: Exchange name
+
+    Returns:
+        List of quote data dictionaries
+
+    Raises:
+        ValidationError: If input validation fails
+    """
+    try:
+        # Validate inputs
+        symbols = validate_symbols(symbols, max_count=1000)
+        provider = provider or "binance"
+        provider = validate_provider(provider)
+
+        logger.debug(f"Fetching batch quotes: {len(symbols)} symbols, provider={provider}")
+
+        tasks = [get_quote(symbol, provider) for symbol in symbols]
+        return await asyncio.gather(*tasks, return_exceptions=True)
+    except ValidationError:
+        raise
+    except Exception as e:
+        logger.error(f"Error in batch quote fetch: {e}")
+        raise
 
 
 async def get_historical(
@@ -88,14 +151,25 @@ async def get_historical(
 
     Returns:
         DataFrame with OHLCV data
+
+    Raises:
+        ValidationError: If input validation fails
     """
     try:
+        # Validate inputs
+        symbol = validate_symbol(symbol)
+        start_dt, end_dt = validate_date_range(start_date, end_date)
+        interval = validate_interval(interval)
         provider = provider or "binance"
+        provider = validate_provider(provider)
+
+        logger.debug(f"Fetching historical: symbol={symbol}, range={start_date} to {end_date}, interval={interval}, provider={provider}")
+
         exchange = get_exchange(provider)
 
         # Convert dates to timestamps
-        start_ts = int(datetime.strptime(start_date, "%Y-%m-%d").timestamp() * 1000)
-        end_ts = int(datetime.strptime(end_date, "%Y-%m-%d").timestamp() * 1000)
+        start_ts = int(start_dt.timestamp() * 1000)
+        end_ts = int(end_dt.timestamp() * 1000)
 
         all_candles = []
         current_ts = start_ts
@@ -134,6 +208,8 @@ async def get_historical(
 
         return df
 
+    except ValidationError:
+        raise
     except Exception as e:
         logger.error(f"Error fetching historical data for {symbol}: {e}")
         raise
@@ -143,17 +219,40 @@ async def subscribe(symbols: List[str], fields: List[str] = None, update_interva
     """
     Subscribe to real-time market data
 
+    Args:
+        symbols: List of trading pairs to subscribe to
+        fields: Fields to include in updates
+        update_interval: Update frequency in seconds
+
+    Returns:
+        Subscription confirmation
+
+    Raises:
+        ValidationError: If input validation fails
+
     Note: This is a placeholder. Real implementation would use WebSocket connections
     """
-    fields = fields or ["price"]
+    try:
+        # Validate inputs
+        symbols = validate_symbols(symbols, max_count=100)
 
-    return {
-        "status": "subscribed",
-        "symbols": symbols,
-        "fields": fields,
-        "update_interval": update_interval,
-        "message": "Subscription created. Use WebSocket endpoint ws://localhost:5100/ws/market-data"
-    }
+        if update_interval < 1 or update_interval > 60:
+            raise ValidationError("Update interval must be between 1 and 60 seconds")
+
+        fields = fields or ["price"]
+
+        return {
+            "status": "subscribed",
+            "symbols": symbols,
+            "fields": fields,
+            "update_interval": update_interval,
+            "message": "Subscription created. Use WebSocket endpoint ws://localhost:5100/ws/market-data"
+        }
+    except ValidationError:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating subscription: {e}")
+        raise
 
 
 async def download_crypto_universe(
@@ -177,32 +276,50 @@ async def download_crypto_universe(
 
     Returns:
         Combined DataFrame with all symbols
+
+    Raises:
+        ValidationError: If input validation fails
     """
     from pathlib import Path
 
-    output_dir = output_dir or "data/raw"
-    output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
+    try:
+        # Validate inputs
+        symbols = validate_symbols(symbols, max_count=500)
+        start_dt, end_dt = validate_date_range(start_date, end_date)
+        interval = validate_interval(interval)
+        provider = validate_provider(provider)
 
-    all_data = {}
+        logger.info(f"Downloading {len(symbols)} symbols from {start_date} to {end_date}")
 
-    for symbol in symbols:
-        try:
-            logger.info(f"Downloading {symbol}...")
-            df = await get_historical(symbol, start_date, end_date, interval, provider)
+        output_dir = output_dir or "data/raw"
+        output_path = Path(output_dir)
+        output_path.mkdir(parents=True, exist_ok=True)
 
-            # Normalize symbol name for filename
-            symbol_name = symbol.replace("/", "_")
+        all_data = {}
 
-            # Save to CSV
-            csv_path = output_path / f"{symbol_name}_{interval}.csv"
-            df.to_csv(csv_path)
-            logger.info(f"Saved {symbol} to {csv_path}")
+        for symbol in symbols:
+            try:
+                logger.info(f"Downloading {symbol}...")
+                df = await get_historical(symbol, start_date, end_date, interval, provider)
 
-            all_data[symbol] = df
+                # Normalize symbol name for filename
+                symbol_name = symbol.replace("/", "_")
 
-        except Exception as e:
-            logger.error(f"Failed to download {symbol}: {e}")
-            continue
+                # Save to CSV
+                csv_path = output_path / f"{symbol_name}_{interval}.csv"
+                df.to_csv(csv_path)
+                logger.info(f"Saved {symbol} to {csv_path}")
 
-    return all_data
+                all_data[symbol] = df
+
+            except Exception as e:
+                logger.error(f"Failed to download {symbol}: {e}")
+                continue
+
+        return all_data
+
+    except ValidationError:
+        raise
+    except Exception as e:
+        logger.error(f"Error downloading crypto universe: {e}")
+        raise

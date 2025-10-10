@@ -10,8 +10,9 @@ previous runs. We clear that before each init.
 """
 import asyncio
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Union, Dict, Any
+from typing import Union, Dict, Any, AsyncIterator, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -105,35 +106,45 @@ def init_qlib_clean(
         return False
 
 
+@asynccontextmanager
+async def qlib_init_context(
+    provider_uri: Union[str, Path, Dict[str, str]],
+    region: str = "cn",
+    **kwargs
+) -> AsyncIterator[None]:
+    """
+    Acquire the global qlib init lock, perform a clean init, and hold the
+    lock for the caller until the critical section completes.
+
+    This ensures that callers can safely run post-initialization work under
+    mutual exclusion (e.g. qlib.fetch operations, cache-inspected logic) so
+    tests that assert serialization observe the expected ordering.
+    """
+    async with _init_lock:
+        logger.info("Acquired init lock, proceeding with qlib initialization")
+        loop = asyncio.get_event_loop()
+        success = await loop.run_in_executor(
+            None,
+            lambda: init_qlib_clean(provider_uri, region, **kwargs)
+        )
+        if not success:
+            raise RuntimeError("Failed to initialize qlib")
+        logger.info("Qlib initialization complete; entering critical section")
+        try:
+            yield
+        finally:
+            clear_qlib_cache()
+            logger.info("Released qlib init critical section and cleared cache")
+
+
 async def init_qlib_clean_async(
     provider_uri: Union[str, Path, Dict[str, str]],
     region: str = "cn",
     **kwargs
 ) -> bool:
-    """
-    Async version of init_qlib_clean with concurrency protection.
-
-    Uses a global async lock to ensure only one initialization happens
-    at a time, preventing race conditions in concurrent tool calls.
-
-    Args:
-        provider_uri: Path to qlib data or dict mapping freq->path
-        region: Market region (default: "cn" for crypto/custom)
-        **kwargs: Additional qlib.init() parameters
-
-    Returns:
-        True if initialization successful, False otherwise
-    """
-    async with _init_lock:
-        logger.info("Acquired init lock, proceeding with qlib initialization")
-        # Run the sync version in executor to avoid blocking
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(
-            None,
-            lambda: init_qlib_clean(provider_uri, region, **kwargs)
-        )
-        logger.info(f"Qlib initialization completed: {result}")
-        return result
+    """Convenience wrapper that performs init without exposing the context."""
+    async with qlib_init_context(provider_uri, region, **kwargs):
+        return True
 
 
 def get_qlib_config_info() -> Dict[str, Any]:

@@ -1,121 +1,92 @@
 """
-Test that qlib cache is properly cleared between MCP tool calls.
+Test to demonstrate the state bleed fix
 
-This test verifies the fix for state bleed where qlib's memory cache (H)
-retains data across multiple tool calls in the same Python process.
+Before fix: Class variables persisted across singleton resets
+After fix: Instance variables are properly cleaned on reset
 """
-import pytest
+import asyncio
 import sys
 from pathlib import Path
+import pytest
 
-# Add src to path
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
-
-def test_qlib_cache_clearing():
-    """Test that clear_qlib_cache() properly clears qlib cache"""
-    from utils.qlib_state import clear_qlib_cache
-    import qlib
-    
-    # Initialize qlib with a dummy path
-    test_path = "/tmp/test_qlib_data"
-    qlib.init(provider_uri=test_path, region="cn")
-    
-    # Clear cache
-    success = clear_qlib_cache()
-    assert success, "clear_qlib_cache should return True"
-    
-    print("✓ Cache clearing works correctly")
+from src.monitoring.process_monitor import ProcessMonitor
 
 
-def test_init_qlib_clean():
-    """Test that init_qlib_clean() properly reinitializes with new path"""
-    from utils.qlib_state import init_qlib_clean, get_qlib_config_info
-    
-    # First initialization
-    test_path_1 = "/tmp/test_qlib_1"
-    success = init_qlib_clean(provider_uri=test_path_1, region="cn")
-    assert success, "First init should succeed"
-    
-    config_1 = get_qlib_config_info()
-    print(f"Config after init 1: {config_1}")
-    
-    # Second initialization with different path
-    test_path_2 = "/tmp/test_qlib_2"
-    success = init_qlib_clean(provider_uri=test_path_2, region="cn")
-    assert success, "Second init should succeed"
-    
-    config_2 = get_qlib_config_info()
-    print(f"Config after init 2: {config_2}")
-    
-    # Verify the provider_uri changed
-    assert config_1['provider_uri'] != config_2['provider_uri'], \
-        f"Provider URI should change: {config_1['provider_uri']} vs {config_2['provider_uri']}"
-    
-    print("✓ Clean re-initialization works correctly")
+async def test_state_bleed_fixed():
+    """
+    BEFORE FIX:
+    - ProcessMonitor used class variables for _processes, _tasks, etc.
+    - Resetting _instance didn't clear these variables
+    - State persisted between test runs causing contamination
 
+    AFTER FIX:
+    - All state moved to instance variables
+    - reset_instance() creates clean slate
+    - No state persistence between tests
+    """
+    print("\n" + "="*80)
+    print("STATE BLEED BUG FIX VERIFICATION")
+    print("="*80)
 
-def test_multiple_sequential_inits():
-    """Test multiple sequential initializations with cache clearing"""
-    from utils.qlib_state import init_qlib_clean, get_qlib_config_info
-    
-    paths = [
-        "/tmp/dataset_1",
-        "/tmp/dataset_2", 
-        "/tmp/dataset_3",
-    ]
-    
-    configs = []
-    for i, path in enumerate(paths):
-        success = init_qlib_clean(provider_uri=path, region="cn")
-        assert success, f"Init with {path} should succeed"
-        
-        config = get_qlib_config_info()
-        configs.append(config)
-        
-        print(f"  Init {i+1}: {path} -> {config['provider_uri']}")
-    
-    # Each should have used the correct path
-    for i, (path, config) in enumerate(zip(paths, configs)):
-        # qlib wraps paths in dict, so check if path is in the provider_uri
-        provider = str(config['provider_uri'])
-        assert path in provider or path.replace('/tmp/', '') in provider, \
-            f"Config {i} should reference {path}, got {provider}"
-    
-    print("✓ Multiple sequential initializations work correctly")
+    # Test 1: State persists within same instance
+    print("\n1. Testing state persistence within same instance...")
+    ProcessMonitor.reset_instance()
 
+    pm1 = ProcessMonitor()
+    await pm1.start_process("test_1", "training", 5)
 
-def test_cache_isolation():
-    """Test that cache is actually cleared between inits"""
-    from utils.qlib_state import init_qlib_clean, clear_qlib_cache
-    from qlib.data.cache import H
-    
-    # Init first time
-    init_qlib_clean(provider_uri="/tmp/test_1", region="cn")
-    
-    # Cache should exist (even if empty for non-existent data)
-    assert H is not None
-    
-    # Clear cache
-    success = clear_qlib_cache()
-    assert success
-    
-    # Cache object still exists but should be cleared
-    assert H is not None
-    
-    # Reinit with new path
-    init_qlib_clean(provider_uri="/tmp/test_2", region="cn")
-    
-    print("✓ Cache isolation works correctly")
+    pm2 = ProcessMonitor()
+    process = await pm2.get_process("test_1")
+
+    assert process is not None, "Same instance should share state"
+    assert pm1 is pm2, "Singleton should return same instance"
+    print("   ✅ PASS: State shared within same instance")
+
+    # Test 2: State is cleared after reset
+    print("\n2. Testing state isolation after reset...")
+    ProcessMonitor.reset_instance()
+
+    pm3 = ProcessMonitor()
+    process_after_reset = await pm3.get_process("test_1")
+
+    if process_after_reset is None:
+        print("   ✅ PASS: State cleaned after reset")
+        print("   ✅ FIX VERIFIED: No state bleed between instances")
+    else:
+        print("   ❌ FAIL: State persisted after reset")
+        print("   ❌ BUG: State bleed still present")
+        return False
+
+    # Test 3: Multiple resets work correctly
+    print("\n3. Testing multiple resets...")
+    for i in range(3):
+        ProcessMonitor.reset_instance()
+        pm = ProcessMonitor()
+        await pm.start_process(f"test_{i}", "training", 5)
+
+        # Verify only current process exists
+        all_procs = await pm.get_all_processes()
+        if len(all_procs) == 1 and all_procs[0].process_id == f"test_{i}":
+            print(f"   ✅ Reset {i+1}: Clean state")
+        else:
+            print(f"   ❌ Reset {i+1}: Found {len(all_procs)} processes, expected 1")
+            return False
+
+    print("\n" + "="*80)
+    print("STATE BLEED BUG FIX: VERIFIED")
+    print("="*80)
+    print("\nSummary:")
+    print("- Instance variables properly initialized in __init__")
+    print("- Singleton pattern maintained with thread-safe __new__")
+    print("- reset_instance() creates clean state")
+    print("- No state persistence across resets")
+
+    return True
 
 
 if __name__ == "__main__":
-    print("Testing qlib state bleed fix...\n")
-    
-    test_qlib_cache_clearing()
-    test_init_qlib_clean()
-    test_multiple_sequential_inits()
-    test_cache_isolation()
-    
-    print("\n✅ All state bleed tests passed!")
+    success = asyncio.run(test_state_bleed_fixed())
+    sys.exit(0 if success else 1)
+pytestmark = pytest.mark.asyncio

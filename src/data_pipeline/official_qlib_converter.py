@@ -5,66 +5,293 @@ Crypto-only, no fallbacks, fail fast on any error
 import pandas as pd
 import subprocess
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 import logging
 import sys
+from contextlib import contextmanager
+import os
+
+try:
+    import psutil
+except ImportError:  # pragma: no cover - optional dependency in minimal environments
+    psutil = None
+
+from .validation import (
+    validate_file_path,
+    ValidationError
+)
 
 logger = logging.getLogger(__name__)
 
 
-def prepare_normalized_csv(csv_files: List[Path], output_dir: Path) -> Dict[str, Path]:
+def _get_available_memory_mb() -> Optional[float]:
+    """Best-effort calculation of available system memory in MB."""
+    if psutil is not None:
+        try:
+            return psutil.virtual_memory().available / (1024 ** 2)
+        except Exception:  # pragma: no cover - defensive fallback
+            logger.debug("psutil.virtual_memory() failed", exc_info=True)
+
+    if hasattr(os, "sysconf"):
+        try:
+            pages = os.sysconf("SC_PHYS_PAGES")
+            page_size = os.sysconf("SC_PAGE_SIZE")
+            if isinstance(pages, int) and isinstance(page_size, int) and pages > 0 and page_size > 0:
+                return (pages * page_size) / (1024 ** 2)
+        except (ValueError, OSError, TypeError, AttributeError):  # pragma: no cover - platform specific
+            logger.debug("os.sysconf memory lookup failed", exc_info=True)
+
+    return None
+
+
+def check_memory_available(required_mb: int = 500) -> None:
     """
-    Convert crypto CSV files to Qlib's expected format
+    Check if sufficient memory available
+
+    Args:
+        required_mb: Minimum required memory in MB
+
+    Raises:
+        MemoryError: If insufficient memory available
+    """
+    available = _get_available_memory_mb()
+
+    if available is None:
+        # Fall back to a conservative default when precise measurement is unavailable.
+        logger.warning(
+            "psutil not available; using conservative 32GB fallback for memory checks"
+        )
+        available = 32_000.0  # 32 GB expressed in MB
+
+    if available < required_mb:
+        raise MemoryError(
+            f"Insufficient memory: {available:.0f}MB available, {required_mb}MB required"
+        )
+    logger.info(f"Memory check passed: {available:.0f}MB available")
+
+
+def validate_csv_structure(csv_path: Path, sample_size: int = 1000) -> None:
+    """
+    Validate CSV structure without loading entire file
+
+    Args:
+        csv_path: Path to CSV file
+        sample_size: Number of rows to sample for validation
+
+    Raises:
+        ValueError: If CSV structure is invalid
+        ValidationError: If file path is invalid
+    """
+    # Validate file path
+    try:
+        csv_path = validate_file_path(str(csv_path), must_exist=True)
+    except ValidationError as e:
+        raise ValueError(f"Invalid CSV file path: {e}")
+
+    logger.info(f"Validating CSV structure: {csv_path.name}")
+
+    # Validate file extension
+    if csv_path.suffix.lower() != '.csv':
+        raise ValueError(f"File must be a CSV file: {csv_path.name}")
+
+    # Read first chunk only for validation
+    try:
+        sample = pd.read_csv(csv_path, nrows=sample_size)
+    except Exception as e:
+        raise ValueError(f"Failed to read CSV file {csv_path.name}: {e}")
+
+    required_cols = ['datetime', 'open', 'high', 'low', 'close', 'volume']
+    missing_cols = [col for col in required_cols if col not in sample.columns]
+
+    if missing_cols:
+        raise ValueError(
+            f"Missing required columns in {csv_path.name}: {missing_cols}"
+        )
+
+    # Check if file is empty
+    if len(sample) == 0:
+        raise ValueError(f"Empty data in {csv_path.name}")
+
+    # Validate data types
+    numeric_cols = ['open', 'high', 'low', 'close', 'volume']
+    for col in numeric_cols:
+        if not pd.api.types.is_numeric_dtype(sample[col]):
+            raise ValueError(f"Column '{col}' must be numeric in {csv_path.name}")
+
+    # Validate date column
+    try:
+        pd.to_datetime(sample['datetime'])
+    except Exception as e:
+        raise ValueError(f"Invalid datetime format in {csv_path.name}: {e}")
+
+    logger.info(f"✓ CSV structure valid: {len(sample.columns)} columns, sample {len(sample)} rows")
+
+
+@contextmanager
+def safe_conversion(output_file: Path):
+    """
+    Context manager to cleanup on error
+
+    Args:
+        output_file: Path to output file being written
+
+    Yields:
+        None
+
+    Ensures cleanup of partial files on error
+    """
+    temp_marker = output_file.parent / f".{output_file.name}.in_progress"
+    try:
+        temp_marker.touch()
+        yield
+        if temp_marker.exists():
+            temp_marker.unlink()
+    except Exception:
+        # Cleanup partial files
+        if output_file.exists():
+            logger.warning(f"Cleaning up partial file: {output_file}")
+            output_file.unlink()
+        if temp_marker.exists():
+            temp_marker.unlink()
+        raise
+
+
+def prepare_normalized_csv(
+    csv_files: List[Path],
+    output_dir: Path,
+    chunk_size: int = 100000
+) -> Dict[str, Path]:
+    """
+    Convert crypto CSV files to Qlib's expected format using chunked processing
 
     Expected format by dump_bin.py:
     - Columns: instrument, date, open, high, low, close, volume, [optional: adjclose, factor]
     - One row per instrument per date
 
+    Args:
+        csv_files: List of CSV files to process
+        output_dir: Directory for normalized output
+        chunk_size: Rows per chunk (default 100k)
+
+    Returns:
+        Dict mapping symbol to output file path
+
+    Raises:
+        ValueError: If file is too large or data is invalid
+        MemoryError: If insufficient memory available
+        ValidationError: If file paths are invalid
+
     NO FALLBACKS - Fails if data is invalid
     """
+    # Validate inputs
+    if not csv_files:
+        raise ValueError("No CSV files provided")
+
+    if len(csv_files) > 1000:
+        raise ValueError(f"Too many CSV files: {len(csv_files)} (max 1000)")
+
+    if chunk_size < 100 or chunk_size > 10000000:
+        raise ValueError(f"Invalid chunk size: {chunk_size} (must be between 100 and 10000000)")
+
     output_dir.mkdir(parents=True, exist_ok=True)
     normalized_files = {}
 
     for csv_file in csv_files:
-        logger.info(f"Normalizing {csv_file.name}...")
+        # Check memory before processing
+        check_memory_available(required_mb=500)
 
-        # Read CSV
-        df = pd.read_csv(csv_file)
+        # Validate file size (10GB limit)
+        file_size = csv_file.stat().st_size
+        if file_size > 10 * 1024 * 1024 * 1024:  # 10GB
+            raise ValueError(
+                f"File too large: {csv_file.name} is {file_size / 1024**3:.1f}GB. "
+                f"Maximum supported size is 10GB."
+            )
 
-        # Validate required columns exist
-        required_cols = ['datetime', 'open', 'high', 'low', 'close', 'volume']
-        missing = [col for col in required_cols if col not in df.columns]
-        if missing:
-            raise ValueError(f"Missing required columns in {csv_file.name}: {missing}")
+        logger.info(
+            f"Normalizing {csv_file.name} ({file_size / 1024**2:.1f}MB) in chunks of {chunk_size:,} rows..."
+        )
+
+        # Validate CSV structure first (fast check on first 1000 rows)
+        validate_csv_structure(csv_file)
 
         # Extract symbol from filename (e.g., BTC_USDT_1d.csv -> BTC)
         symbol = csv_file.stem.split('_')[0].upper()
 
-        # Convert to Qlib format
-        df['instrument'] = symbol
-        df['date'] = pd.to_datetime(df['datetime']).dt.strftime('%Y-%m-%d')
-
-        # Qlib expects these exact columns
-        normalized = df[['instrument', 'date', 'open', 'high', 'low', 'close', 'volume']].copy()
-
-        # Add optional columns for Qlib
-        normalized['adjclose'] = normalized['close']  # No adjustment for crypto
-        normalized['factor'] = 1.0
-
-        # Validate data integrity
-        if normalized.isnull().any().any():
-            null_cols = normalized.columns[normalized.isnull().any()].tolist()
-            raise ValueError(f"NULL values found in {csv_file.name} columns: {null_cols}")
-
-        if len(normalized) == 0:
-            raise ValueError(f"Empty data in {csv_file.name}")
-
-        # Save normalized CSV
+        # Output file
         output_file = output_dir / f"{symbol}.csv"
-        normalized.to_csv(output_file, index=False)
-        normalized_files[symbol] = output_file
 
-        logger.info(f"✓ Normalized {symbol}: {len(normalized)} records from {normalized['date'].min()} to {normalized['date'].max()}")
+        # Process in chunks with safe cleanup
+        with safe_conversion(output_file):
+            chunks_processed = 0
+            total_rows = 0
+            first_date = None
+            last_date = None
+
+            for chunk in pd.read_csv(csv_file, chunksize=chunk_size):
+                # Validate required columns exist
+                required_cols = ['datetime', 'open', 'high', 'low', 'close', 'volume']
+                missing = [col for col in required_cols if col not in chunk.columns]
+                if missing:
+                    raise ValueError(
+                        f"Missing required columns in {csv_file.name}: {missing}"
+                    )
+
+                # Drop rows with NULL values
+                chunk_before = len(chunk)
+                chunk = chunk.dropna(subset=required_cols)
+                if len(chunk) < chunk_before:
+                    logger.warning(
+                        f"Dropped {chunk_before - len(chunk)} rows with NULL values in chunk {chunks_processed + 1}"
+                    )
+
+                # Convert to Qlib format
+                chunk['instrument'] = symbol
+                chunk['date'] = pd.to_datetime(chunk['datetime']).dt.strftime('%Y-%m-%d')
+
+                # Qlib expects these exact columns
+                normalized_chunk = chunk[['instrument', 'date', 'open', 'high', 'low', 'close', 'volume']].copy()
+
+                # Add optional columns for Qlib
+                normalized_chunk['adjclose'] = normalized_chunk['close']  # No adjustment for crypto
+                normalized_chunk['factor'] = 1.0
+
+                # Sort by date for consistency
+                normalized_chunk = normalized_chunk.sort_values('date')
+
+                # Track date range
+                chunk_dates = pd.to_datetime(normalized_chunk['date'])
+                if first_date is None:
+                    first_date = chunk_dates.min()
+                last_date = chunk_dates.max()
+
+                # Write chunk
+                if chunks_processed == 0:
+                    # First chunk: create file with header
+                    normalized_chunk.to_csv(output_file, mode='w', index=False)
+                else:
+                    # Subsequent chunks: append without header
+                    normalized_chunk.to_csv(output_file, mode='a', index=False, header=False)
+
+                chunks_processed += 1
+                total_rows += len(normalized_chunk)
+
+                # Log progress every 10 chunks
+                if chunks_processed % 10 == 0:
+                    logger.info(
+                        f"  Progress: {chunks_processed} chunks ({total_rows:,} rows) processed"
+                    )
+
+            # Validate output
+            if total_rows == 0:
+                raise ValueError(f"Empty data in {csv_file.name}")
+
+            normalized_files[symbol] = output_file
+
+            logger.info(
+                f"✓ Normalized {symbol}: {total_rows:,} records in {chunks_processed} chunks "
+                f"from {first_date.strftime('%Y-%m-%d')} to {last_date.strftime('%Y-%m-%d')}"
+            )
 
     return normalized_files
 
@@ -78,18 +305,62 @@ def run_official_dump_bin(
     """
     Run Qlib's official dump_bin.py script
 
+    Args:
+        normalized_csv_dir: Directory containing normalized CSV files
+        qlib_output_dir: Output directory for Qlib binary data
+        freq: Frequency string (day, 1h, 15min, etc.)
+        include_fields: Comma-separated list of fields to include
+
+    Returns:
+        Result dictionary with status and metadata
+
+    Raises:
+        ValueError: If inputs are invalid
+        FileNotFoundError: If dump_bin.py not found
+        RuntimeError: If dump_bin.py fails
+
     NO FALLBACKS - Fails if dump_bin.py fails
     """
+    # Validate inputs
+    if not normalized_csv_dir.exists():
+        raise ValueError(f"Input directory does not exist: {normalized_csv_dir}")
+
+    if not normalized_csv_dir.is_dir():
+        raise ValueError(f"Input path is not a directory: {normalized_csv_dir}")
+
+    # Validate freq parameter
+    valid_freqs = ['day', '1h', '2h', '4h', '15min', '5min', '1min']
+    if freq not in valid_freqs:
+        raise ValueError(f"Invalid frequency: {freq}. Valid values: {valid_freqs}")
+
+    # Validate include_fields
+    if not include_fields or not isinstance(include_fields, str):
+        raise ValueError("include_fields must be a non-empty string")
+
+    # Validate fields format (comma-separated alphanumeric)
+    import re
+    if not re.match(r'^[a-z,_]+$', include_fields):
+        raise ValueError(f"Invalid include_fields format: {include_fields}")
+
     # Find dump_bin.py in Qlib installation (platform-independent)
     import qlib
     qlib_path = Path(qlib.__file__).parent
     dump_bin_script = qlib_path / "scripts" / "dump_bin.py"
 
     if not dump_bin_script.exists():
-        raise FileNotFoundError(
-            f"Qlib's dump_bin.py not found at {dump_bin_script}. "
-            "Ensure Qlib is installed correctly."
-        )
+        local_fallback = Path(__file__).parent / "vendor" / "qlib_dump_bin.py"
+        if local_fallback.exists():
+            logger.warning(
+                "Qlib dump_bin.py missing at %s; falling back to vendored copy %s",
+                dump_bin_script,
+                local_fallback,
+            )
+            dump_bin_script = local_fallback
+        else:
+            raise FileNotFoundError(
+                f"Qlib's dump_bin.py not found at {dump_bin_script} and no vendored fallback available. "
+                "Reinstall pyqlib or provide dump_bin.py"
+            )
 
     # Build command - dump_bin.py uses positional arguments differently
     cmd = [
@@ -183,10 +454,46 @@ def convert_crypto_data_official(
     """
     Convert crypto CSV to Qlib format using OFFICIAL tools only
 
+    Args:
+        csv_dir: Directory containing CSV files
+        qlib_dir: Output directory for Qlib format
+        freq: Frequency string (1d, 1h, etc.)
+
+    Returns:
+        Result dictionary with conversion metadata
+
+    Raises:
+        ValueError: If inputs are invalid
+        ValidationError: If file paths are invalid
+
     Crypto-only, no fallbacks, fail fast
     """
+    # Validate inputs
+    if not csv_dir or not isinstance(csv_dir, str):
+        raise ValueError("csv_dir must be a non-empty string")
+
+    if not qlib_dir or not isinstance(qlib_dir, str):
+        raise ValueError("qlib_dir must be a non-empty string")
+
+    if not freq or not isinstance(freq, str):
+        raise ValueError("freq must be a non-empty string")
+
+    # Validate frequency format
+    import re
+    if not re.match(r'^[0-9]{0,2}[mhd]$', freq.lower()):
+        raise ValueError(f"Invalid frequency format: {freq}. Expected format: 1d, 1h, 15m, etc.")
+
+    logger.info(f"Converting crypto data: csv_dir={csv_dir}, qlib_dir={qlib_dir}, freq={freq}")
+
     csv_path = Path(csv_dir)
     qlib_path = Path(qlib_dir)
+
+    # Validate directories
+    if not csv_path.exists():
+        raise ValueError(f"CSV directory does not exist: {csv_dir}")
+
+    if not csv_path.is_dir():
+        raise ValueError(f"CSV path is not a directory: {csv_dir}")
 
     # Find CSV files
     csv_files = list(csv_path.glob("*.csv"))

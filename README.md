@@ -94,7 +94,8 @@ docker-compose logs -f api
 python scripts/download_sample_data.py
 ```
 
-This downloads historical data for top 10 cryptocurrencies (BTC, ETH, BNB, etc.) from 2023-2024.
+This downloads historical data for the top 10 cryptocurrencies (BTC, ETH, BNB, etc.).
+Use `--start`/`--end` flags to control the window (defaults to the last ~2 years).
 
 #### 2. Convert to Qlib Format
 ```bash
@@ -124,6 +125,22 @@ python scripts/predict.py <model_id>
 
 Generates trading signals for today's session.
 
+## 📚 Documentation
+
+Comprehensive documentation is available in the `docs/` directory:
+
+- **[Quick Start Guide](docs/guides/QUICKSTART.md)** - Get up and running in 5 minutes
+- **[Deployment Guide](docs/guides/DEPLOYMENT.md)** - Local and cloud deployment
+- **[Production Deployment](docs/guides/PRODUCTION_DEPLOYMENT_GUIDE.md)** - Production-ready setup
+- **[Platform Overview](docs/PLATFORM_OVERVIEW.md)** - Architecture and design
+- **[MCP Server Setup](docs/guides/MCP_SETUP.md)** - MCP integration guide
+- **[Documentation Index](docs/DOCUMENTATION_INDEX.md)** - Complete documentation map
+
+### Reference Documentation
+- **[WebSocket Security](docs/reference/WEBSOCKET_SECURITY.md)** - Security features and authentication
+- **[Cost Configuration](docs/reference/COST_MIGRATION_GUIDE.md)** - Transaction cost setup
+- **[Port Configuration](docs/reference/PORT_CONFIGURATION.md)** - Service port reference
+
 ## 🌐 Web Interface
 
 Start the API server:
@@ -139,6 +156,9 @@ Access:
 - **Dashboard**: http://localhost:5100
 - **API Docs**: http://localhost:5100/docs
 - **OpenAPI**: http://localhost:5100/openapi.json
+
+When the dashboard starts it prompts for a WebSocket API key. Use one of the values configured in `WEBSOCKET_API_KEYS` (generate with `python3 -c "from src.ui.security import generate_api_key; print(generate_api_key())"`).
+The client exchanges the key for a short-lived token via `POST /api/auth/ws-token` and refreshes it as needed. Clicking **Authenticate** in the sidebar lets you refresh or revoke the token at any time.
 
 ## 🔌 MCP Server
 
@@ -311,7 +331,12 @@ curl -X POST http://localhost:5100/api/models/train \
   -d '{
     "dataset": "crypto",
     "feature_handler": "alpha158",
-    "model_handler": "lightgbm"
+    "model_handler": "lightgbm",
+    "segments": {
+      "train": ["2021-01-01", "2022-12-31"],
+      "valid": ["2023-01-01", "2023-06-30"],
+      "test": ["2023-07-01", "2023-12-31"]
+    }
   }'
 ```
 
@@ -322,6 +347,9 @@ curl -X POST http://localhost:5100/api/backtests/run \
   -d '{
     "model_id": "lightgbm_20241006_123456",
     "dataset": "crypto",
+    "start_date": "2023-01-01",
+    "end_date": "2024-12-31",
+    "benchmark": "BTC_USDT",
     "costs": "medium",
     "rebalance": "weekly"
   }'
@@ -381,14 +409,19 @@ WEBSOCKET_API_KEYS=qlib_key1,qlib_key2,qlib_key3
 
 **Client Connection:**
 ```javascript
-// Via query parameter
-const ws = new WebSocket('ws://localhost:5100/ws/events?api_key=YOUR_KEY');
+// Exchange API key for short-lived token
+const response = await fetch('http://localhost:5100/api/auth/ws-token', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ api_key: 'YOUR_KEY' })
+});
+const { token } = await response.json();
 
-// Via header (Python)
-import websockets
-headers = {"Authorization": "Bearer YOUR_KEY"}
-ws = await websockets.connect('ws://localhost:5100/ws/events', extra_headers=headers)
+// Use token in the WebSocket connection
+const ws = new WebSocket(`ws://localhost:5100/ws/events?token=${token}`);
 ```
+
+Tokens default to a 1-hour TTL (`WEBSOCKET_TOKEN_TTL_SECONDS`) and the dashboard refreshes them automatically before expiry.
 
 ### Security Features
 
@@ -401,6 +434,7 @@ ws = await websockets.connect('ws://localhost:5100/ws/events', extra_headers=hea
 - ✅ **Heartbeat Timeout**: 60-second connection timeout
 - ✅ **Failed Auth Tracking**: Automatic blocking after 5 failed attempts
 - ✅ **No Information Leakage**: Generic error messages
+- ✅ **Short-lived Tokens**: API keys are exchanged for signed, time-bound WebSocket tokens
 
 ### Secured Endpoints
 
@@ -428,6 +462,13 @@ DATABASE_URL=postgresql://qlib:qlib_password@postgres:5110/qlib_crypto
 
 # WebSocket Security (REQUIRED for WebSocket endpoints)
 WEBSOCKET_API_KEYS=your_generated_key_here
+WEBSOCKET_TOKEN_SECRET=change_me_in_production
+WEBSOCKET_TOKEN_TTL_SECONDS=3600
+
+# Redis backing store for multi-worker process monitoring (REQUIRED when scaling horizontally)
+PROCESS_MONITOR_REDIS_URL=redis://redis:6379/1
+PROCESS_MONITOR_REDIS_KEY=process_monitor:processes
+PROCESS_MONITOR_CHANNEL=process_monitor:events
 
 # Exchange API Keys (for authenticated endpoints)
 BINANCE_API_KEY=your_key
@@ -435,6 +476,23 @@ BINANCE_API_SECRET=your_secret
 
 # Notifications
 SLACK_WEBHOOK_URL=https://hooks.slack.com/...
+
+# Prediction data freshness guard (hours)
+PREDICTION_MAX_DATA_AGE_HOURS=24
+
+# Automated market data refresh (keeps datasets within freshness window)
+DATA_REFRESH_ENABLED=false
+DATA_REFRESH_SYMBOLS=BTC/USDT,ETH/USDT,BNB/USDT
+DATA_REFRESH_INTERVAL=1d
+DATA_REFRESH_LOOKBACK_DAYS=30
+DATA_REFRESH_FREQUENCY_MINUTES=180
+DATA_REFRESH_PROVIDER=binance
+DATA_REFRESH_DATASET=crypto
+DATA_REFRESH_CALENDAR=crypto_1d
+DATA_REFRESH_OUTPUT_DIR=data/raw
+
+# pyqlib version resolution (required outside git checkout)
+SETUPTOOLS_SCM_PRETEND_VERSION=0.9.8
 ```
 
 ### Custom Feature Sets

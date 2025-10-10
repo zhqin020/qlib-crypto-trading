@@ -6,15 +6,15 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse
-from pydantic import BaseModel, validator, Field
-from typing import Optional, List, Dict, Any
+from pydantic import BaseModel, Field, field_validator
+from typing import Optional, List, Dict, Any, Tuple
 from pathlib import Path
 from contextlib import asynccontextmanager
 import logging
 import json
 import asyncio
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 
 from .events import get_event_broadcaster
 from ..monitoring.process_monitor import monitor, ProcessInfo
@@ -23,7 +23,9 @@ from .security import (
     connection_manager,
     check_message_size,
     MAX_MESSAGE_SIZE,
-    HEARTBEAT_TIMEOUT
+    HEARTBEAT_TIMEOUT,
+    validate_api_key,
+    create_ws_token,
 )
 
 logger = logging.getLogger(__name__)
@@ -324,11 +326,12 @@ class DataDownloadRequest(BaseModel):
 
 class TrainModelRequest(BaseModel):
     dataset: str = Field(..., min_length=1, max_length=100)
-    feature_handler: str = Field(default="alpha158", pattern="^(alpha158|alpha360)$")
-    model_handler: str = Field(default="lightgbm", pattern="^(lightgbm|xgboost|lstm|transformer|gru)$")
+    feature_handler: str = Field(..., pattern="^(alpha158|alpha360)$")
+    model_handler: str = Field(..., pattern="^(lightgbm|xgboost|lstm|transformer|gru)$")
     params: Optional[Dict[str, Any]] = None
+    segments: Optional[Dict[str, Tuple[str, str]]] = None
 
-    @validator('dataset')
+    @field_validator('dataset')
     def validate_dataset(cls, v):
         # Prevent path traversal
         if '..' in v or '/' in v or '\\' in v:
@@ -337,7 +340,7 @@ class TrainModelRequest(BaseModel):
             raise ValueError('Dataset name must contain only alphanumeric characters, underscores, and hyphens')
         return v
 
-    @validator('params')
+    @field_validator('params')
     def validate_params(cls, v):
         if v is None:
             return {}
@@ -346,26 +349,59 @@ class TrainModelRequest(BaseModel):
             raise ValueError('Parameters too large (max 10KB)')
         return v
 
+    @field_validator('segments')
+    def validate_segments(cls, v):
+        if v is None:
+            return None
+
+        for key in ("train", "valid", "test"):
+            if key not in v:
+                raise ValueError(f"Segments must include '{key}' range")
+            start, end = v[key]
+            try:
+                start_dt = datetime.strptime(start, "%Y-%m-%d")
+                end_dt = datetime.strptime(end, "%Y-%m-%d")
+            except ValueError as exc:
+                raise ValueError(f"Invalid {key} segment: {exc}") from exc
+            if start_dt > end_dt:
+                raise ValueError(f"Segment '{key}' start must be on or before end")
+
+        return v
+
 class BacktestRequest(BaseModel):
     model_id: str = Field(..., min_length=1, max_length=200)
     dataset: str = Field(..., min_length=1, max_length=100)
+    start_date: Optional[str] = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+    end_date: Optional[str] = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+    benchmark: Optional[str] = Field(None, min_length=1, max_length=100)
     costs: str = Field(default="medium", pattern="^(low|medium|high)$")
     rebalance: str = Field(default="weekly", pattern="^(daily|weekly|monthly)$")
+    funding: bool = False
 
-    @validator('model_id')
+    @field_validator('model_id')
     def validate_model_id(cls, v):
         # Prevent path traversal
         if '..' in v or '/' in v or '\\' in v:
             raise ValueError('Invalid model_id: path traversal not allowed')
         return v
 
-    @validator('dataset')
+    @field_validator('dataset')
     def validate_dataset(cls, v):
         # Prevent path traversal
         if '..' in v or '/' in v or '\\' in v:
             raise ValueError('Invalid dataset name: path traversal not allowed')
         if not v.replace('_', '').replace('-', '').isalnum():
             raise ValueError('Dataset name must contain only alphanumeric characters, underscores, and hyphens')
+        return v
+
+    @field_validator('start_date', 'end_date')
+    def validate_dates(cls, v, info):
+        if v is None:
+            return v
+        try:
+            datetime.strptime(v, "%Y-%m-%d")
+        except ValueError as exc:
+            raise ValueError(f"Invalid {info.field_name.replace('_', ' ')}: {exc}")
         return v
 
 class PredictionRequest(BaseModel):
@@ -373,14 +409,14 @@ class PredictionRequest(BaseModel):
     dataset: str = Field(..., min_length=1, max_length=100)
     prediction_date: Optional[str] = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
 
-    @validator('model_id')
+    @field_validator('model_id')
     def validate_model_id(cls, v):
         # Prevent path traversal
         if '..' in v or '/' in v or '\\' in v:
             raise ValueError('Invalid model_id: path traversal not allowed')
         return v
 
-    @validator('dataset')
+    @field_validator('dataset')
     def validate_dataset(cls, v):
         # Prevent path traversal
         if '..' in v or '/' in v or '\\' in v:
@@ -389,7 +425,7 @@ class PredictionRequest(BaseModel):
             raise ValueError('Dataset name must contain only alphanumeric characters, underscores, and hyphens')
         return v
 
-    @validator('prediction_date')
+    @field_validator('prediction_date')
     def validate_prediction_date(cls, v):
         if v is None:
             return None
@@ -404,6 +440,15 @@ class PredictionRequest(BaseModel):
             if 'does not match format' in str(e):
                 raise ValueError(f'Invalid date format. Expected YYYY-MM-DD')
             raise
+
+
+class WebSocketTokenRequest(BaseModel):
+    api_key: str = Field(..., min_length=10, max_length=256)
+
+
+class WebSocketTokenResponse(BaseModel):
+    token: str
+    expires_at: datetime
 
 
 # Process response models
@@ -594,6 +639,18 @@ async def health_check():
         "version": "2.0.0",
         "websocket_clients": len(broadcaster.active_connections)
     }
+
+
+@app.post("/api/auth/ws-token", response_model=WebSocketTokenResponse)
+async def issue_websocket_token(request: WebSocketTokenRequest):
+    """Exchange an API key for a signed, short-lived WebSocket token."""
+    user_id = validate_api_key(request.api_key)
+    if not user_id:
+        raise HTTPException(status_code=403, detail="Invalid API key")
+
+    token, expires_at = create_ws_token(user_id)
+    expires_dt = datetime.fromtimestamp(expires_at, tz=timezone.utc)
+    return WebSocketTokenResponse(token=token, expires_at=expires_dt)
 
 
 @app.get("/api/system/stats")
@@ -790,6 +847,11 @@ async def train_model(request: TrainModelRequest):
                 handler=request.feature_handler
             )
 
+            if "error" in feature_set:
+                await monitor.fail_process(process_id, feature_set["error"])
+                await broadcaster.broadcast_notification("error", feature_set["error"])
+                return
+
             await broadcaster.broadcast_model_update("creating", "in_progress", {"feature_set": feature_set["name"]})
 
             # Step 2: Train model
@@ -798,7 +860,8 @@ async def train_model(request: TrainModelRequest):
                 dataset_ref=request.dataset,
                 feature_set_ref=feature_set["name"],
                 handler=request.model_handler,
-                params=request.params
+                params=request.params,
+                segments=request.segments,
             )
 
             if "error" not in result:
@@ -900,8 +963,12 @@ async def run_backtest(request: BacktestRequest):
             result = await run_bt(
                 model_id=request.model_id,
                 dataset_ref=request.dataset,
+                start_time=request.start_date,
+                end_time=request.end_date,
+                benchmark=request.benchmark,
                 costs=request.costs,
-                rebalance=request.rebalance
+                rebalance=request.rebalance,
+                funding=request.funding,
             )
 
             if "error" not in result:
@@ -1564,20 +1631,51 @@ async def websocket_process_updates(websocket: WebSocket, process_id: str):
     Args:
         process_id: Unique process identifier
     """
+    user_id = None
+
     # Authenticate connection
     try:
         user_id = await authenticate_websocket(websocket)
     except HTTPException as e:
-        await websocket.close(code=1008, reason=e.detail)
+        try:
+            await websocket.close(code=1008, reason=e.detail)
+        except:
+            pass
         return
 
     # Add connection
     if not connection_manager.add_connection(user_id, websocket):
-        await websocket.close(code=1008, reason="Maximum connections exceeded")
+        try:
+            await websocket.close(code=1008, reason="Maximum connections exceeded")
+        except:
+            pass
         return
 
     # Validate process_id
-    process_id = validate_process_id(process_id)
+    try:
+        process_id = validate_process_id(process_id)
+    except HTTPException as e:
+        try:
+            await websocket.accept()
+            await websocket.send_json({
+                "type": "error",
+                "message": e.detail,
+                "timestamp": datetime.now().isoformat()
+            })
+            await websocket.close(code=1008, reason=e.detail)
+        except:
+            pass
+        if user_id:
+            connection_manager.remove_connection(user_id, websocket)
+        return
+
+    # Accept connection explicitly
+    try:
+        await websocket.accept()
+    except Exception as e:
+        logger.error(f"Failed to accept WebSocket connection for user {user_id}: {e}")
+        connection_manager.remove_connection(user_id, websocket)
+        return
 
     try:
         # First, verify process exists
@@ -1585,20 +1683,27 @@ async def websocket_process_updates(websocket: WebSocket, process_id: str):
         if not process:
             await websocket.send_json({
                 "type": "error",
-                "message": f"Process '{process_id}' not found"
+                "message": f"Process '{process_id}' not found",
+                "timestamp": datetime.now().isoformat()
             })
-            await websocket.close()
+            await websocket.close(code=1008, reason="Process not found")
             connection_manager.remove_connection(user_id, websocket)
             return
 
         # Send initial state
         await websocket.send_json({
             "type": "process_update",
-            "data": process.to_dict()
+            "data": process.to_dict(),
+            "timestamp": datetime.now().isoformat()
         })
 
         # Keep sending updates while process is running
         while True:
+            # Check heartbeat timeout
+            if not connection_manager.is_connection_alive(user_id):
+                logger.warning(f"Heartbeat timeout for user {user_id}")
+                break
+
             # Check for client messages (keepalive, disconnect)
             try:
                 message = await asyncio.wait_for(
@@ -1610,7 +1715,8 @@ async def websocket_process_updates(websocket: WebSocket, process_id: str):
                 if not await check_message_size(message):
                     await websocket.send_json({
                         "type": "error",
-                        "message": f"Message exceeds maximum size of {MAX_MESSAGE_SIZE} bytes"
+                        "message": f"Message exceeds maximum size of {MAX_MESSAGE_SIZE} bytes",
+                        "timestamp": datetime.now().isoformat()
                     })
                     continue
 
@@ -1618,61 +1724,114 @@ async def websocket_process_updates(websocket: WebSocket, process_id: str):
                 if not connection_manager.check_rate_limit(user_id):
                     await websocket.send_json({
                         "type": "error",
-                        "message": "Rate limit exceeded. Max 100 messages per minute."
+                        "message": "Rate limit exceeded. Max 100 messages per minute.",
+                        "timestamp": datetime.now().isoformat()
                     })
                     continue
 
                 # Update heartbeat
                 connection_manager.update_heartbeat(user_id)
 
-                data = json.loads(message)
-                if data.get("type") == "ping":
-                    await websocket.send_json({"type": "pong"})
+                # Parse message with error handling
+                try:
+                    data = json.loads(message)
+                    if data.get("type") == "ping":
+                        await websocket.send_json({
+                            "type": "pong",
+                            "timestamp": datetime.now().isoformat()
+                        })
+                except json.JSONDecodeError as e:
+                    logger.warning(f"Invalid JSON from user {user_id} for process {process_id}: {message[:100]}")
+                    # Send error but continue
+                    try:
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": f"Invalid JSON format: {str(e)}",
+                            "timestamp": datetime.now().isoformat()
+                        })
+                    except:
+                        pass
+
             except asyncio.TimeoutError:
                 pass  # No message, continue
+            except Exception as e:
+                logger.error(f"Error receiving message from user {user_id}: {e}")
+                break
 
             # Get latest process state
-            process = await monitor.get_process(process_id)
-            if not process:
-                await websocket.send_json({
-                    "type": "error",
-                    "message": "Process no longer exists"
-                })
-                break
+            try:
+                process = await monitor.get_process(process_id)
+                if not process:
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": "Process no longer exists",
+                        "timestamp": datetime.now().isoformat()
+                    })
+                    break
 
-            # Send update
-            await websocket.send_json({
-                "type": "process_update",
-                "data": process.to_dict()
-            })
+                # Send update
+                try:
+                    await websocket.send_json({
+                        "type": "process_update",
+                        "data": process.to_dict(),
+                        "timestamp": datetime.now().isoformat()
+                    })
+                except Exception as send_error:
+                    logger.error(f"Failed to send update to user {user_id}: {send_error}")
+                    # Don't break, continue trying
 
-            # Check if process completed/failed/cancelled
-            if process.status.value in ["completed", "failed", "cancelled"]:
-                await websocket.send_json({
-                    "type": "process_complete",
-                    "data": process.to_dict()
-                })
-                break
+                # Check if process completed/failed/cancelled
+                if process.status.value in ["completed", "failed", "cancelled"]:
+                    try:
+                        await websocket.send_json({
+                            "type": "process_complete",
+                            "data": process.to_dict(),
+                            "timestamp": datetime.now().isoformat()
+                        })
+                        # Give client time to receive final message
+                        await asyncio.sleep(0.2)
+                    except Exception as complete_error:
+                        logger.error(f"Failed to send completion message: {complete_error}")
+                    break
+
+            except Exception as fetch_error:
+                logger.error(f"Failed to get process {process_id}: {fetch_error}")
+                # Graceful degradation
+                try:
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": "Failed to retrieve process data",
+                        "timestamp": datetime.now().isoformat()
+                    })
+                except:
+                    pass
 
             # Wait 500ms before next update
             await asyncio.sleep(0.5)
 
     except WebSocketDisconnect:
-        logger.info(f"Client disconnected from process {process_id}")
-        connection_manager.remove_connection(user_id, websocket)
+        logger.info(f"User {user_id} disconnected normally from process {process_id}")
     except Exception as e:
-        logger.error(f"WebSocket error for process {process_id}: {e}")
-        connection_manager.remove_connection(user_id, websocket)
+        logger.error(f"WebSocket error for user {user_id}, process {process_id}: {e}", exc_info=True)
         try:
-            await websocket.send_json({
+            # Serialize exception properly
+            error_message = {
                 "type": "error",
-                "message": str(e)
-            })
+                "message": str(e),
+                "timestamp": datetime.now().isoformat()
+            }
+            await websocket.send_json(error_message)
         except:
             pass
     finally:
+        # Always cleanup
+        if user_id:
+            connection_manager.remove_connection(user_id, websocket)
         try:
-            await websocket.close()
+            await websocket.close(
+                code=1000,
+                reason="Process monitoring complete"
+            )
         except:
             pass
 

@@ -1,0 +1,193 @@
+{
+  "total_tests": 31,
+  "passed": 30,
+  "failed": 1,
+  "tests": [
+    {
+      "name": "TEST 1.1: Qlib datasets exist",
+      "status": "PASS",
+      "details": "Found 11 datasets in data/qlib/",
+      "error": null
+    },
+    {
+      "name": "TEST 1.2: Raw data exists",
+      "status": "PASS",
+      "details": "Raw data directories: ['raw_1d', 'raw_full', 'raw_multi']",
+      "error": null
+    },
+    {
+      "name": "TEST 1.3c: Import register_crypto_calendar",
+      "status": "FAIL",
+      "details": "",
+      "error": "No module named 'qlib'"
+    },
+    {
+      "name": "TEST 1.4a: Alpha158 configs exist",
+      "status": "PASS",
+      "details": "Found 5 alpha158 configs",
+      "error": null
+    },
+    {
+      "name": "TEST 1.4b: Alpha360 configs exist",
+      "status": "PASS",
+      "details": "Found 2 alpha360 configs",
+      "error": null
+    },
+    {
+      "name": "TEST 1.5: Dataset structure final_test",
+      "status": "PASS",
+      "details": "Has calendars/, instruments/, features/",
+      "error": null
+    },
+    {
+      "name": "TEST 2.1: Import trainer.py",
+      "status": "PASS",
+      "details": "train_model imported successfully",
+      "error": null
+    },
+    {
+      "name": "TEST 2.2: train_model signature",
+      "status": "PASS",
+      "details": "Parameters: ['dataset_ref', 'feature_set_ref', 'handler', 'params']",
+      "error": null
+    },
+    {
+      "name": "TEST 2.3: Uses async state management",
+      "status": "PASS",
+      "details": "qlib_init_context() found in trainer.py",
+      "error": null
+    },
+    {
+      "name": "TEST 2.4: Imports qlib_state",
+      "status": "PASS",
+      "details": "State management module imported",
+      "error": null
+    },
+    {
+      "name": "TEST 2.5: Model storage directory",
+      "status": "PASS",
+      "details": "models/trained/ exists",
+      "error": null
+    },
+    {
+      "name": "TEST 2.6: Model configurations",
+      "status": "PASS",
+      "details": "Available: crypto_model_tuning",
+      "error": null
+    },
+    {
+      "name": "TEST 3.1: Import engine.py",
+      "status": "PASS",
+      "details": "run_backtest imported successfully",
+      "error": null
+    },
+    {
+      "name": "TEST 3.2: run_backtest signature",
+      "status": "PASS",
+      "details": "Parameters: ['model_id', 'dataset_ref', 'costs', 'rebalance', 'funding']",
+      "error": null
+    },
+    {
+      "name": "TEST 3.3: Uses async state management",
+      "status": "PASS",
+      "details": "qlib_init_context() found in engine.py",
+      "error": null
+    },
+    {
+      "name": "TEST 3.4: Imports qlib_state",
+      "status": "PASS",
+      "details": "State management module imported",
+      "error": null
+    },
+    {
+      "name": "TEST 3.5: Cost configuration",
+      "status": "PASS",
+      "details": "Trading cost handling found",
+      "error": null
+    },
+    {
+      "name": "TEST 3.6: Crypto metrics calculation",
+      "status": "PASS",
+      "details": "Metrics calculation found",
+      "error": null
+    },
+    {
+      "name": "TEST 4.1: Import predictor.py",
+      "status": "PASS",
+      "details": "predict_today imported successfully",
+      "error": null
+    },
+    {
+      "name": "TEST 4.2: predict_today signature",
+      "status": "PASS",
+      "details": "Parameters: ['model_id', 'dataset_ref']",
+      "error": null
+    },
+    {
+      "name": "TEST 4.3: Uses async state management",
+      "status": "PASS",
+      "details": "qlib_init_context() found in predictor.py",
+      "error": null
+    },
+    {
+      "name": "TEST 4.4: Imports qlib_state",
+      "status": "PASS",
+      "details": "State management module imported",
+      "error": null
+    },
+    {
+      "name": "TEST 4.5: Predictions storage",
+      "status": "PASS",
+      "details": "predictions/ directory exists",
+      "error": null
+    },
+    {
+      "name": "TEST 5.1: All modules use async init",
+      "status": "PASS",
+      "details": "trainer.py, engine.py, predictor.py all use qlib_init_context()",
+      "error": null
+    },
+    {
+      "name": "TEST 5.2: Path validation",
+      "status": "PASS",
+      "details": "Dataset path validation present",
+      "error": null
+    },
+    {
+      "name": "TEST 5.3: Error handling",
+      "status": "PASS",
+      "details": "Error handling present",
+      "error": null
+    },
+    {
+      "name": "TEST 6.1: Config files found",
+      "status": "PASS",
+      "details": "Found 8 configuration files",
+      "error": null
+    },
+    {
+      "name": "TEST 6.2: Config JSON validity",
+      "status": "PASS",
+      "details": "Valid: 8, Invalid: 0",
+      "error": null
+    },
+    {
+      "name": "TEST 7.1: Required directories",
+      "status": "PASS",
+      "details": "All required dirs exist",
+      "error": null
+    },
+    {
+      "name": "TEST 7.2: Optional directories",
+      "status": "PASS",
+      "details": "All optional directories exist",
+      "error": null
+    },
+    {
+      "name": "TEST 7.3: Key files exist",
+      "status": "PASS",
+      "details": "All key files present",
+      "error": null
+    }
+  ]
+}

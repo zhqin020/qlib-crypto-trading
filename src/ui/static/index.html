@@ -107,11 +107,30 @@
                 display: flex;
                 align-items: center;
                 gap: 8px;
+                justify-content: space-between;
                 padding: 8px 12px;
                 background: var(--bg-tertiary);
                 border-radius: 6px;
                 font-size: 13px;
                 margin-top: 16px;
+            }
+
+            .status-info {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+
+            .status-actions {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                margin-left: auto;
+            }
+
+            .status-subtext {
+                font-size: 11px;
+                color: var(--text-tertiary);
             }
 
             .status-dot {
@@ -200,8 +219,40 @@
 
             .form-input:focus,
             .form-select:focus {
-                outline: none;
+                outline: 2px solid var(--accent);
+                outline-offset: 2px;
                 border-color: var(--accent);
+            }
+
+            /* Enhanced focus indicators for all interactive elements */
+            .btn:focus,
+            .btn-expand:focus,
+            .btn-cancel:focus,
+            .nav-item:focus {
+                outline: 2px solid var(--accent);
+                outline-offset: 2px;
+            }
+
+            /* Remove outline for mouse users (keep for keyboard) */
+            .btn:focus:not(:focus-visible),
+            .btn-expand:focus:not(:focus-visible),
+            .btn-cancel:focus:not(:focus-visible),
+            .form-select:focus:not(:focus-visible),
+            .form-input:focus:not(:focus-visible),
+            .nav-item:focus:not(:focus-visible),
+            .list-item:focus:not(:focus-visible) {
+                outline: none;
+            }
+
+            .btn:focus-visible,
+            .btn-expand:focus-visible,
+            .btn-cancel:focus-visible,
+            .form-select:focus-visible,
+            .form-input:focus-visible,
+            .nav-item:focus-visible,
+            .list-item:focus-visible {
+                outline: 2px solid var(--accent);
+                outline-offset: 2px;
             }
 
             .btn {
@@ -356,6 +407,83 @@
                 }
             }
 
+            /* Dropdown loading spinner */
+            .dropdown-spinner {
+                display: inline-block;
+                width: 16px;
+                height: 16px;
+                border: 2px solid var(--border-light);
+                border-top-color: var(--accent);
+                border-radius: 50%;
+                animation: spin 0.8s linear infinite;
+                margin-right: 8px;
+                vertical-align: middle;
+            }
+
+            .form-select-loading {
+                position: relative;
+            }
+
+            .form-select-loading::before {
+                content: '';
+                position: absolute;
+                left: 12px;
+                top: 50%;
+                transform: translateY(-50%);
+                width: 14px;
+                height: 14px;
+                border: 2px solid var(--border-light);
+                border-top-color: var(--accent);
+                border-radius: 50%;
+                animation: spin 0.8s linear infinite;
+                z-index: 1;
+            }
+
+            .form-select-loading select {
+                padding-left: 36px;
+                color: var(--text-tertiary);
+            }
+
+            .dropdown-error-state {
+                display: flex;
+                align-items: center;
+                padding: 8px 12px;
+                background: var(--danger-bg);
+                border: 1px solid var(--danger);
+                border-radius: 6px;
+                color: var(--danger);
+                font-size: 13px;
+                margin-top: 4px;
+            }
+
+            .dropdown-error-state button {
+                margin-left: auto;
+                padding: 4px 12px;
+                background: transparent;
+                border: 1px solid var(--danger);
+                border-radius: 4px;
+                color: var(--danger);
+                cursor: pointer;
+                font-size: 12px;
+                transition: all 0.2s;
+            }
+
+            .dropdown-error-state button:hover {
+                background: var(--danger);
+                color: white;
+            }
+
+            /* Fade transitions for loading states */
+            .fade-enter-active,
+            .fade-leave-active {
+                transition: opacity 0.2s ease;
+            }
+
+            .fade-enter-from,
+            .fade-leave-to {
+                opacity: 0;
+            }
+
             .empty {
                 text-align: center;
                 padding: 40px;
@@ -366,6 +494,70 @@
                 display: grid;
                 grid-template-columns: 1fr 1fr;
                 gap: 12px;
+            }
+
+            .grid-3 {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 12px;
+            }
+
+            .advanced-panel {
+                margin-top: 12px;
+                padding: 16px;
+                background: var(--bg-tertiary);
+                border: 1px solid var(--border);
+                border-radius: 8px;
+            }
+
+            .advanced-panel h4 {
+                font-size: 13px;
+                font-weight: 600;
+                margin-bottom: 12px;
+                color: var(--text-secondary);
+            }
+
+            .advanced-toggle {
+                display: flex;
+                justify-content: flex-end;
+                margin-top: 8px;
+            }
+
+            .btn-secondary {
+                background: transparent;
+                color: var(--accent);
+                border: 1px solid var(--accent);
+                width: auto;
+            }
+
+            .btn-secondary:hover {
+                background: var(--accent);
+                color: white;
+            }
+
+            .btn-secondary:disabled {
+                opacity: 0.6;
+                cursor: not-allowed;
+            }
+
+            .toggle-field {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                padding: 10px 12px;
+                background: var(--bg-tertiary);
+                border: 1px solid var(--border);
+                border-radius: 6px;
+            }
+
+            .toggle-field input[type="checkbox"] {
+                width: 18px;
+                height: 18px;
+            }
+
+            .form-help-inline {
+                font-size: 12px;
+                color: var(--text-tertiary);
             }
 
             /* Progress tracking styles */
@@ -475,6 +667,50 @@
                 max-height: 200px;
                 overflow-y: auto;
                 margin-top: 12px;
+                position: relative;
+                scroll-behavior: smooth;
+            }
+
+            .logs-container {
+                position: relative;
+            }
+
+            .scroll-to-bottom-btn {
+                position: absolute;
+                bottom: 8px;
+                right: 8px;
+                padding: 6px 12px;
+                background: var(--accent);
+                color: white;
+                border: none;
+                border-radius: 4px;
+                font-size: 11px;
+                font-weight: 600;
+                cursor: pointer;
+                transition: all 0.2s;
+                opacity: 0;
+                visibility: hidden;
+                z-index: 10;
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            }
+
+            .scroll-to-bottom-btn.visible {
+                opacity: 1;
+                visibility: visible;
+            }
+
+            .scroll-to-bottom-btn:hover {
+                background: var(--accent-hover);
+                transform: translateY(-1px);
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+            }
+
+            .scroll-to-bottom-btn:focus-visible {
+                outline: 2px solid white;
+                outline-offset: 2px;
             }
 
             .log-entry {
@@ -507,11 +743,31 @@
                 font-size: 12px;
                 cursor: pointer;
                 transition: all 0.2s;
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                min-width: 70px;
+                justify-content: center;
             }
 
-            .btn-cancel:hover {
+            .btn-cancel:hover:not(:disabled) {
                 background: var(--danger);
                 color: white;
+            }
+
+            .btn-cancel:disabled {
+                opacity: 0.6;
+                cursor: not-allowed;
+            }
+
+            .btn-cancel-spinner {
+                display: inline-block;
+                width: 12px;
+                height: 12px;
+                border: 2px solid rgba(239, 68, 68, 0.3);
+                border-top-color: var(--danger);
+                border-radius: 50%;
+                animation: spin 0.8s linear infinite;
             }
 
             .btn-expand {
@@ -547,62 +803,659 @@
             .icon-spin {
                 animation: rotate 1s linear infinite;
             }
+
+            /* Screen reader only class */
+            .sr-only {
+                position: absolute;
+                width: 1px;
+                height: 1px;
+                padding: 0;
+                margin: -1px;
+                overflow: hidden;
+                clip: rect(0, 0, 0, 0);
+                white-space: nowrap;
+                border: 0;
+            }
+
+            /* Skip to content link */
+            .skip-link {
+                position: absolute;
+                top: -40px;
+                left: 0;
+                background: var(--accent);
+                color: white;
+                padding: 8px 16px;
+                text-decoration: none;
+                z-index: 100;
+                border-radius: 0 0 6px 0;
+            }
+
+            .skip-link:focus {
+                top: 0;
+            }
+
+            /* Required field indicator */
+            .required {
+                color: var(--danger);
+                margin-left: 4px;
+            }
+
+            /* Form help text */
+            .form-help {
+                font-size: 12px;
+                color: var(--text-secondary);
+                margin-top: 4px;
+            }
+
+            /* =================================================================
+               RESPONSIVE DESIGN - Mobile & Tablet Support
+               ================================================================= */
+
+            /* Tablet: 768px - 1023px */
+            @media (max-width: 1023px) {
+                .container {
+                    grid-template-columns: 1fr 300px;
+                }
+
+                .sidebar {
+                    display: none;
+                }
+
+                .activity {
+                    border-left: 1px solid var(--border);
+                }
+
+                .main {
+                    padding: 20px;
+                }
+
+                .page-title {
+                    font-size: 24px;
+                }
+
+                .section {
+                    padding: 16px;
+                }
+            }
+
+            /* Mobile: < 768px */
+            @media (max-width: 767px) {
+                .container {
+                    grid-template-columns: 1fr;
+                    grid-template-rows: 1fr auto;
+                }
+
+                .sidebar {
+                    display: none;
+                }
+
+                .activity {
+                    border-left: none;
+                    border-top: 1px solid var(--border);
+                    max-height: 300px;
+                    overflow-y: auto;
+                }
+
+                .activity-header {
+                    padding: 16px;
+                }
+
+                .activity-feed {
+                    padding: 8px;
+                }
+
+                .activity-item {
+                    padding: 10px;
+                    font-size: 12px;
+                    margin-bottom: 6px;
+                }
+
+                .main {
+                    padding: 16px;
+                }
+
+                .page-header {
+                    margin-bottom: 20px;
+                }
+
+                .page-title {
+                    font-size: 22px;
+                }
+
+                .page-subtitle {
+                    font-size: 13px;
+                }
+
+                .section {
+                    padding: 16px;
+                    margin-bottom: 16px;
+                    border-radius: 8px;
+                }
+
+                .section-title {
+                    font-size: 15px;
+                    margin-bottom: 12px;
+                }
+
+                /* Stack grid columns on mobile */
+                .grid-2 {
+                    grid-template-columns: 1fr;
+                    gap: 12px;
+                }
+
+                /* Form inputs with larger tap targets */
+                .form-group {
+                    margin-bottom: 14px;
+                }
+
+                .form-input,
+                .form-select {
+                    padding: 12px;
+                    font-size: 16px; /* Prevents iOS zoom on focus */
+                }
+
+                .form-label {
+                    font-size: 12px;
+                }
+
+                /* Buttons with minimum tap target size */
+                .btn {
+                    min-height: 44px;
+                    padding: 12px 16px;
+                    font-size: 14px;
+                }
+
+                .btn-sm {
+                    min-height: 40px;
+                    padding: 10px 14px;
+                }
+
+                /* Process cards responsive */
+                .process-card {
+                    padding: 14px;
+                    margin-bottom: 10px;
+                }
+
+                .process-header {
+                    flex-direction: column;
+                    align-items: flex-start;
+                    gap: 10px;
+                }
+
+                .process-title {
+                    font-size: 13px;
+                    word-break: break-word;
+                }
+
+                .process-actions {
+                    width: 100%;
+                    justify-content: flex-start;
+                    flex-wrap: wrap;
+                }
+
+                .btn-expand,
+                .btn-cancel {
+                    min-height: 36px;
+                    padding: 8px 12px;
+                    font-size: 12px;
+                }
+
+                .process-meta {
+                    font-size: 11px;
+                }
+
+                .progress-text {
+                    font-size: 11px;
+                }
+
+                /* List items */
+                .list-item {
+                    padding: 12px;
+                    margin-bottom: 8px;
+                }
+
+                .list-item-title {
+                    font-size: 14px;
+                }
+
+                .list-item-meta {
+                    font-size: 11px;
+                }
+
+                /* Result boxes */
+                .result-box {
+                    font-size: 11px;
+                    max-height: 150px;
+                    padding: 10px;
+                }
+
+                /* Nav items (if sidebar ever shown on mobile) */
+                .nav-item {
+                    min-height: 44px;
+                    padding: 12px;
+                }
+
+                /* Empty state */
+                .empty {
+                    padding: 30px 20px;
+                    font-size: 13px;
+                }
+            }
+
+            /* Small Mobile: < 480px */
+            @media (max-width: 479px) {
+                .main {
+                    padding: 12px;
+                }
+
+                .page-title {
+                    font-size: 20px;
+                }
+
+                .page-subtitle {
+                    font-size: 12px;
+                }
+
+                .section {
+                    padding: 12px;
+                    margin-bottom: 12px;
+                }
+
+                .section-title {
+                    font-size: 14px;
+                }
+
+                .activity {
+                    max-height: 250px;
+                }
+
+                .activity-header {
+                    padding: 12px;
+                    font-size: 14px;
+                }
+
+                .activity-item {
+                    padding: 8px;
+                    font-size: 11px;
+                }
+
+                .process-card {
+                    padding: 12px;
+                }
+
+                .process-title {
+                    font-size: 12px;
+                }
+
+                .btn {
+                    font-size: 13px;
+                }
+
+                .form-input,
+                .form-select {
+                    padding: 10px;
+                }
+
+                .grid-2 {
+                    gap: 10px;
+                }
+            }
+
+            /* Landscape Mobile */
+            @media (max-width: 767px) and (orientation: landscape) {
+                .activity {
+                    max-height: 200px;
+                }
+
+                .main {
+                    padding: 12px;
+                }
+
+                .section {
+                    padding: 12px;
+                    margin-bottom: 12px;
+                }
+            }
+
+            /* High DPI displays - improve rendering */
+            @media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+                .border,
+                .section,
+                .form-input,
+                .form-select {
+                    border-width: 0.5px;
+                }
+            }
+
+            /* Reduced motion preference */
+            @media (prefers-reduced-motion: reduce) {
+                *,
+                *::before,
+                *::after {
+                    animation-duration: 0.01ms !important;
+                    animation-iteration-count: 1 !important;
+                    transition-duration: 0.01ms !important;
+                }
+            }
+
+            /* Toast Notifications */
+            .toast-container {
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                z-index: 1000;
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+                max-width: 400px;
+            }
+
+            .toast {
+                padding: 16px 20px;
+                background: var(--bg-elevated);
+                border: 1px solid var(--border);
+                border-radius: 8px;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                animation: slideIn 0.3s ease;
+                min-width: 300px;
+            }
+
+            .toast.success {
+                border-left: 4px solid var(--success);
+            }
+
+            .toast.error {
+                border-left: 4px solid var(--danger);
+            }
+
+            .toast.warning {
+                border-left: 4px solid var(--warning);
+            }
+
+            .toast.info {
+                border-left: 4px solid var(--accent);
+            }
+
+            .toast-message {
+                flex: 1;
+                font-size: 14px;
+                color: var(--text-primary);
+            }
+
+            .toast-close {
+                background: transparent;
+                border: none;
+                color: var(--text-secondary);
+                font-size: 20px;
+                cursor: pointer;
+                padding: 0;
+                width: 24px;
+                height: 24px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                border-radius: 4px;
+                transition: all 0.2s;
+            }
+
+            .toast-close:hover {
+                background: var(--bg-tertiary);
+                color: var(--text-primary);
+            }
+
+            @keyframes slideIn {
+                from {
+                    transform: translateX(400px);
+                    opacity: 0;
+                }
+                to {
+                    transform: translateX(0);
+                    opacity: 1;
+                }
+            }
+
+            /* Accessible Modal Dialog */
+            .modal-overlay {
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0, 0, 0, 0.7);
+                z-index: 2000;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                animation: fadeIn 0.2s ease;
+            }
+
+            .modal-dialog {
+                background: var(--bg-secondary);
+                border: 1px solid var(--border);
+                border-radius: 12px;
+                padding: 24px;
+                max-width: 500px;
+                width: 90%;
+                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+                animation: scaleIn 0.2s ease;
+            }
+
+            .modal-header {
+                font-size: 18px;
+                font-weight: 600;
+                margin-bottom: 12px;
+                color: var(--text-primary);
+            }
+
+            .modal-body {
+                font-size: 14px;
+                color: var(--text-secondary);
+                margin-bottom: 20px;
+                line-height: 1.5;
+            }
+
+            .modal-actions {
+                display: flex;
+                gap: 12px;
+                justify-content: flex-end;
+            }
+
+            .modal-btn {
+                padding: 10px 20px;
+                border: none;
+                border-radius: 6px;
+                font-weight: 600;
+                font-size: 14px;
+                cursor: pointer;
+                transition: all 0.2s;
+            }
+
+            .modal-btn-primary {
+                background: var(--danger);
+                color: white;
+            }
+
+            .modal-btn-primary:hover {
+                background: #dc2626;
+            }
+
+            .modal-btn-secondary {
+                background: var(--bg-tertiary);
+                color: var(--text-primary);
+                border: 1px solid var(--border);
+            }
+
+            .modal-btn-secondary:hover {
+                background: var(--bg-elevated);
+            }
+
+            @keyframes fadeIn {
+                from {
+                    opacity: 0;
+                }
+                to {
+                    opacity: 1;
+                }
+            }
+
+            @keyframes scaleIn {
+                from {
+                    transform: scale(0.9);
+                    opacity: 0;
+                }
+                to {
+                    transform: scale(1);
+                    opacity: 1;
+                }
+            }
+
+            /* Form validation error messages */
+            .form-error {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 8px 12px;
+                background: var(--danger-bg);
+                border: 1px solid var(--danger);
+                border-radius: 6px;
+                color: var(--danger);
+                font-size: 13px;
+                margin-top: 8px;
+            }
+
+            .form-error-icon {
+                font-size: 16px;
+            }
+
+            /* Print styles */
+            @media print {
+                .sidebar,
+                .activity,
+                .btn,
+                .skip-link,
+                .toast-container,
+                .modal-overlay {
+                    display: none !important;
+                }
+
+                .container {
+                    grid-template-columns: 1fr;
+                }
+
+                .main {
+                    padding: 0;
+                }
+
+                .section {
+                    page-break-inside: avoid;
+                }
+            }
         </style>
     </head>
     <body>
+        <a href="#main-content" class="skip-link">Skip to main content</a>
         <div id="app">
             <div class="container">
                 <!-- Sidebar -->
-                <div class="sidebar">
+                <aside class="sidebar" role="navigation" aria-label="Main navigation">
                     <div class="logo">⚡ Qlib Crypto</div>
 
-                    <div class="nav-section">
+                    <nav class="nav-section">
                         <div class="nav-title">Navigation</div>
-                        <div
+                        <button
                             :class="['nav-item', {active: page === 'dashboard'}]"
                             @click="page = 'dashboard'"
+                            role="button"
+                            :aria-current="page === 'dashboard' ? 'page' : null"
+                            aria-label="Navigate to Dashboard"
                         >
-                            📊 Dashboard
-                        </div>
-                        <div
+                            <span aria-hidden="true">📊</span> Dashboard
+                        </button>
+                        <button
                             :class="['nav-item', {active: page === 'data'}]"
                             @click="page = 'data'"
+                            role="button"
+                            :aria-current="page === 'data' ? 'page' : null"
+                            aria-label="Navigate to Market Data"
                         >
-                            💹 Market Data
-                        </div>
-                        <div
+                            <span aria-hidden="true">💹</span> Market Data
+                        </button>
+                        <button
                             :class="['nav-item', {active: page === 'models'}]"
                             @click="page = 'models'"
+                            role="button"
+                            :aria-current="page === 'models' ? 'page' : null"
+                            aria-label="Navigate to Models"
                         >
-                            🤖 Models
-                        </div>
-                        <div
+                            <span aria-hidden="true">🤖</span> Models
+                        </button>
+                        <button
                             :class="['nav-item', {active: page === 'backtest'}]"
                             @click="page = 'backtest'"
+                            role="button"
+                            :aria-current="page === 'backtest' ? 'page' : null"
+                            aria-label="Navigate to Backtest"
                         >
-                            📈 Backtest
-                        </div>
-                        <div
+                            <span aria-hidden="true">📈</span> Backtest
+                        </button>
+                        <button
                             :class="['nav-item', {active: page === 'predictions'}]"
                             @click="page = 'predictions'"
+                            role="button"
+                            :aria-current="page === 'predictions' ? 'page' : null"
+                            aria-label="Navigate to Predictions"
                         >
-                            🔮 Predictions
+                            <span aria-hidden="true">🔮</span> Predictions
+                        </button>
+                        <button
+                            :class="['nav-item', {active: page === 'processes'}]"
+                            @click="page = 'processes'"
+                            role="button"
+                            :aria-current="page === 'processes' ? 'page' : null"
+                            aria-label="Navigate to Processes"
+                        >
+                            <span aria-hidden="true">⚙️</span> Processes
+                        </button>
+                    </nav>
+
+                    <div class="status" role="status" aria-live="polite">
+                        <div class="status-info">
+                            <div
+                                :class="['status-dot', {disconnected: !connected}]"
+                                :aria-label="connected ? 'Connected' : 'Disconnected'"
+                            ></div>
+                            <span>{{ connected ? 'Connected' : 'Disconnected' }}</span>
+                        </div>
+                        <div class="status-actions">
+                            <span v-if="wsAuth.token" class="status-subtext" :aria-live="'polite'">
+                                Token {{ wsTokenRemainingLabel() }}
+                            </span>
+                            <button
+                                type="button"
+                                class="btn btn-secondary btn-sm"
+                                @click="openWsAuthModal"
+                                :aria-expanded="wsAuth.showModal"
+                            >
+                                {{ wsAuth.token ? 'Refresh Auth' : 'Authenticate' }}
+                            </button>
+                            <button
+                                v-if="wsAuth.token"
+                                type="button"
+                                class="btn btn-secondary btn-sm"
+                                @click="clearWsToken"
+                                aria-label="Sign out from WebSocket session"
+                            >
+                                Sign Out
+                            </button>
                         </div>
                     </div>
-
-                    <div class="status">
-                        <div
-                            :class="['status-dot', {disconnected: !connected}]"
-                        ></div>
-                        <span
-                            >{{ connected ? 'Connected' : 'Disconnected'
-                            }}</span
-                        >
-                    </div>
-                </div>
+                </aside>
 
                 <!-- Main Content -->
-                <div class="main">
+                <main class="main" id="main-content" tabindex="-1">
                     <!-- Dashboard -->
                     <div v-if="page === 'dashboard'">
                         <div class="page-header">
@@ -672,32 +1525,63 @@
                             <div v-if="processes.length === 0" class="empty">
                                 No active processes
                             </div>
-                            <div v-for="process in processes" :key="process.process_id" :class="['process-card', process.status]">
+                            <div
+                                v-for="process in processes"
+                                :key="process.process_id"
+                                :class="['process-card', process.status]"
+                                role="article"
+                                :aria-label="'Process ' + process.process_type + ' ' + process.process_id + ', status: ' + process.status"
+                            >
                                 <div class="process-header">
                                     <div class="process-title">
-                                        <div :class="['process-status-icon', process.status]">
-                                            <span v-if="process.status === 'running'" class="icon-spin">⟳</span>
-                                            <span v-else-if="process.status === 'completed'">✓</span>
-                                            <span v-else-if="process.status === 'failed'">✗</span>
-                                            <span v-else-if="process.status === 'cancelled'">⊗</span>
+                                        <div
+                                            :class="['process-status-icon', process.status]"
+                                            :aria-label="'Status: ' + process.status"
+                                        >
+                                            <span v-if="process.status === 'running'" class="icon-spin" aria-hidden="true">⟳</span>
+                                            <span v-else-if="process.status === 'completed'" aria-hidden="true">✓</span>
+                                            <span v-else-if="process.status === 'failed'" aria-hidden="true">✗</span>
+                                            <span v-else-if="process.status === 'cancelled'" aria-hidden="true">⊗</span>
                                         </div>
-                                        <span>{{ process.process_type }} - {{ process.process_id }}</span>
+                                        <span
+                                            :title="'UUID: ' + process.process_id"
+                                            style="cursor: help;"
+                                        >
+                                            {{ process.display_id || (process.process_type + ' - ' + process.process_id) }}
+                                        </span>
                                     </div>
                                     <div class="process-actions">
-                                        <button @click="toggleProcessLogs(process.process_id)" class="btn-expand">
+                                        <button
+                                            @click="toggleProcessLogs(process.process_id)"
+                                            class="btn-expand"
+                                            :aria-label="expandedProcesses[process.process_id] ? 'Hide logs for process ' + process.process_id : 'Show logs for process ' + process.process_id"
+                                            :aria-expanded="expandedProcesses[process.process_id] || false"
+                                            :aria-controls="'logs-' + process.process_id"
+                                        >
                                             {{ expandedProcesses[process.process_id] ? 'Hide Logs' : 'Show Logs' }}
                                         </button>
-                                        <button v-if="process.status === 'running'" @click="cancelProcess(process.process_id)" class="btn-cancel">
-                                            Cancel
+                                        <button
+                                            v-if="process.status === 'running' || cancellingProcesses[process.process_id]"
+                                            @click="cancelProcess(process.process_id)"
+                                            class="btn-cancel"
+                                            :disabled="cancellingProcesses[process.process_id]"
+                                            :aria-label="cancellingProcesses[process.process_id] ? 'Cancelling process ' + process.process_id : 'Cancel process ' + process.process_id"
+                                        >
+                                            <span v-if="cancellingProcesses[process.process_id]" class="btn-cancel-spinner" aria-hidden="true"></span>
+                                            <span>{{ cancellingProcesses[process.process_id] ? 'Cancelling...' : 'Cancel' }}</span>
                                         </button>
                                     </div>
                                 </div>
 
-                                <div class="process-meta">
-                                    {{ process.metrics.current_step }} | Elapsed: {{ formatDuration(process) }}
+                                <div class="process-meta" aria-label="Process metadata">
+                                    {{ process.metrics.current_step }} |
+                                    Elapsed: {{ formatDuration(process) }}
+                                    <span v-if="process.status === 'running' && process.metrics.estimated_seconds_remaining">
+                                        | ETA: ~{{ formatETA(process.metrics.estimated_seconds_remaining) }}
+                                    </span>
                                 </div>
 
-                                <div class="progress-bar-container">
+                                <div class="progress-bar-container" role="progressbar" :aria-valuenow="process.metrics.progress_percent" aria-valuemin="0" aria-valuemax="100" :aria-label="'Progress: ' + process.metrics.progress_percent.toFixed(1) + '%'">
                                     <div :class="['progress-bar', process.status]" :style="{ width: process.metrics.progress_percent + '%' }"></div>
                                 </div>
 
@@ -708,10 +1592,30 @@
                                     </span>
                                 </div>
 
-                                <div :class="['process-logs', { expanded: expandedProcesses[process.process_id] }]">
-                                    <div v-for="log in process.logs.slice(-20)" :key="log.timestamp" :class="['log-entry', log.level]">
-                                        [{{ formatLogTime(log.timestamp) }}] {{ log.message }}
+                                <div v-if="expandedProcesses[process.process_id]" class="logs-container">
+                                    <div
+                                        :class="['process-logs', { expanded: expandedProcesses[process.process_id] }]"
+                                        :id="'logs-' + process.process_id"
+                                        role="log"
+                                        aria-live="polite"
+                                        aria-atomic="false"
+                                        :aria-label="'Logs for process ' + process.process_id"
+                                        @scroll="handleLogScroll(process.process_id, $event)"
+                                        :ref="'logs-' + process.process_id"
+                                    >
+                                        <div v-for="log in process.logs.slice(-20)" :key="log.timestamp" :class="['log-entry', log.level]">
+                                            <span class="sr-only">{{ log.level }} at {{ formatLogTime(log.timestamp) }}:</span>
+                                            [{{ formatLogTime(log.timestamp) }}] {{ log.message }}
+                                        </div>
                                     </div>
+                                    <button
+                                        :class="['scroll-to-bottom-btn', { visible: showScrollButton[process.process_id] }]"
+                                        @click="scrollLogsToBottom(process.process_id)"
+                                        aria-label="Scroll to bottom of logs"
+                                    >
+                                        <span aria-hidden="true">↓</span>
+                                        <span>Bottom</span>
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -729,10 +1633,16 @@
                         <div class="section">
                             <div class="section-title">📥 Download Data</div>
                             <div class="form-group">
-                                <label class="form-label">Crypto Symbol</label>
+                                <label for="data-symbol" class="form-label">
+                                    Crypto Symbol
+                                    <span class="required" aria-label="required">*</span>
+                                </label>
                                 <select
+                                    id="data-symbol"
                                     v-model="forms.data.symbol"
                                     class="form-select"
+                                    aria-required="true"
+                                    aria-describedby="data-symbol-help"
                                 >
                                     <option value="BTC/USDT">BTC/USDT</option>
                                     <option value="ETH/USDT">ETH/USDT</option>
@@ -741,61 +1651,99 @@
                                     <option value="ADA/USDT">ADA/USDT</option>
                                     <option value="XRP/USDT">XRP/USDT</option>
                                     <option value="DOT/USDT">DOT/USDT</option>
-                                    <option value="MATIC/USDT">
-                                        MATIC/USDT
-                                    </option>
+                                    <option value="MATIC/USDT">MATIC/USDT</option>
                                 </select>
+                                <div id="data-symbol-help" class="form-help">
+                                    Select the cryptocurrency trading pair to download
+                                </div>
                             </div>
                             <div class="form-group">
-                                <label class="form-label">Exchange</label>
+                                <label for="data-exchange" class="form-label">
+                                    Exchange
+                                    <span class="required" aria-label="required">*</span>
+                                </label>
                                 <select
+                                    id="data-exchange"
                                     v-model="forms.data.provider"
                                     class="form-select"
+                                    aria-required="true"
+                                    aria-describedby="data-exchange-help"
                                 >
                                     <option value="binance">Binance</option>
                                     <option value="kraken">Kraken</option>
                                     <option value="coinbase">Coinbase</option>
                                 </select>
+                                <div id="data-exchange-help" class="form-help">
+                                    Choose the exchange to download data from
+                                </div>
                             </div>
                             <div class="grid-2">
                                 <div class="form-group">
-                                    <label class="form-label">Start Date</label>
+                                    <label for="data-start-date" class="form-label">
+                                        Start Date
+                                        <span class="required" aria-label="required">*</span>
+                                    </label>
                                     <input
+                                        id="data-start-date"
                                         type="date"
                                         v-model="forms.data.start_date"
                                         class="form-input"
+                                        aria-required="true"
+                                        aria-describedby="data-start-date-help"
                                     />
+                                    <div id="data-start-date-help" class="form-help">
+                                        Beginning of data range
+                                    </div>
                                 </div>
                                 <div class="form-group">
-                                    <label class="form-label">End Date</label>
+                                    <label for="data-end-date" class="form-label">
+                                        End Date
+                                        <span class="required" aria-label="required">*</span>
+                                    </label>
                                     <input
+                                        id="data-end-date"
                                         type="date"
                                         v-model="forms.data.end_date"
                                         class="form-input"
+                                        aria-required="true"
+                                        aria-describedby="data-end-date-help"
                                     />
+                                    <div id="data-end-date-help" class="form-help">
+                                        End of data range
+                                    </div>
                                 </div>
                             </div>
                             <div class="form-group">
-                                <label class="form-label">Interval</label>
+                                <label for="data-interval" class="form-label">
+                                    Interval
+                                    <span class="required" aria-label="required">*</span>
+                                </label>
                                 <select
+                                    id="data-interval"
                                     v-model="forms.data.interval"
                                     class="form-select"
+                                    aria-required="true"
+                                    aria-describedby="data-interval-help"
                                 >
                                     <option value="1d">1 Day</option>
                                     <option value="1h">1 Hour</option>
                                     <option value="15m">15 Minutes</option>
                                 </select>
+                                <div id="data-interval-help" class="form-help">
+                                    Time interval between data points
+                                </div>
                             </div>
                             <button
                                 @click="downloadData"
                                 class="btn btn-primary"
                                 :disabled="loading"
+                                aria-label="Download market data"
                             >
                                 <span v-if="!loading">Download Data</span>
-                                <span v-else
-                                    ><span class="spinner"></span>
-                                    Downloading...</span
-                                >
+                                <span v-else>
+                                    <span class="spinner" aria-hidden="true"></span>
+                                    <span aria-live="polite">Downloading...</span>
+                                </span>
                             </button>
                             <div
                                 v-if="forms.data.result"
@@ -820,33 +1768,52 @@
                                 dataset for training
                             </p>
                             <div class="form-group">
-                                <label class="form-label">Dataset Name</label>
+                                <label for="convert-dataset" class="form-label">
+                                    Dataset Name
+                                    <span class="required" aria-label="required">*</span>
+                                </label>
                                 <input
+                                    id="convert-dataset"
                                     v-model="forms.convert.dataset"
                                     class="form-input"
                                     placeholder="crypto_btc_daily"
+                                    aria-required="true"
+                                    aria-describedby="convert-dataset-help"
                                 />
+                                <div id="convert-dataset-help" class="form-help">
+                                    Enter a unique name for the dataset
+                                </div>
                             </div>
                             <div class="form-group">
-                                <label class="form-label">Frequency</label>
+                                <label for="convert-freq" class="form-label">
+                                    Frequency
+                                    <span class="required" aria-label="required">*</span>
+                                </label>
                                 <select
+                                    id="convert-freq"
                                     v-model="forms.convert.freq"
                                     class="form-select"
+                                    aria-required="true"
+                                    aria-describedby="convert-freq-help"
                                 >
                                     <option value="1d">Daily (1d)</option>
                                     <option value="1h">Hourly (1h)</option>
                                 </select>
+                                <div id="convert-freq-help" class="form-help">
+                                    Time frequency of the dataset
+                                </div>
                             </div>
                             <button
                                 @click="convertData"
                                 class="btn btn-primary"
                                 :disabled="loading || !forms.convert.dataset"
+                                aria-label="Create dataset from downloaded data"
                             >
                                 <span v-if="!loading">Create Dataset</span>
-                                <span v-else
-                                    ><span class="spinner"></span>
-                                    Converting...</span
-                                >
+                                <span v-else>
+                                    <span class="spinner" aria-hidden="true"></span>
+                                    <span aria-live="polite">Converting...</span>
+                                </span>
                             </button>
                             <div
                                 v-if="forms.convert.result"
@@ -872,10 +1839,11 @@
                                 @click="loadModels"
                                 class="btn btn-primary btn-sm"
                                 style="width: auto; margin-bottom: 12px"
+                                aria-label="Refresh models list"
                             >
                                 Refresh
                             </button>
-                            <div v-if="models.length === 0" class="empty">
+                            <div v-if="models.length === 0" class="empty" role="status">
                                 No models yet
                             </div>
                             <div
@@ -883,13 +1851,18 @@
                                 :key="model.model_id"
                                 :class="['list-item', {selected: selectedModel?.model_id === model.model_id}]"
                                 @click="selectedModel = model"
+                                role="button"
+                                tabindex="0"
+                                :aria-label="'Model ' + model.model_id + ', handler: ' + model.handler + ', dataset: ' + model.dataset"
+                                :aria-pressed="selectedModel?.model_id === model.model_id"
+                                @keydown.enter="selectedModel = model"
+                                @keydown.space.prevent="selectedModel = model"
                             >
                                 <div class="list-item-title">
                                     {{ model.model_id }}
                                 </div>
                                 <div class="list-item-meta">
-                                    Handler: {{ model.handler }} | Dataset: {{
-                                    model.dataset }}
+                                    Handler: {{ model.handler }} | Dataset: {{ model.dataset }}
                                 </div>
                             </div>
                         </div>
@@ -897,13 +1870,20 @@
                         <div class="section">
                             <div class="section-title">🎯 Train New Model</div>
                             <div class="form-group">
-                                <label class="form-label">Dataset</label>
+                                <label for="train-dataset" class="form-label">
+                                    Dataset
+                                    <span class="required" aria-label="required">*</span>
+                                </label>
                                 <select
+                                    id="train-dataset"
                                     v-model="forms.train.dataset"
                                     class="form-select"
                                     @focus="loadDatasets"
+                                    @change="handleTrainDatasetChange"
+                                    aria-required="true"
+                                    aria-describedby="train-dataset-help"
                                 >
-                                    <option value="">Select dataset...</option>
+                                    <option value="" disabled>Select dataset...</option>
                                     <option
                                         v-for="ds in datasets"
                                         :key="ds.name"
@@ -912,14 +1892,21 @@
                                         {{ ds.name }}
                                     </option>
                                 </select>
+                                <div id="train-dataset-help" class="form-help">
+                                    Choose a dataset to train the model on
+                                </div>
                             </div>
                             <div class="form-group">
-                                <label class="form-label"
-                                    >Feature Handler</label
-                                >
+                                <label for="train-feature-handler" class="form-label">
+                                    Feature Handler
+                                    <span class="required" aria-label="required">*</span>
+                                </label>
                                 <select
+                                    id="train-feature-handler"
                                     v-model="forms.train.feature_handler"
                                     class="form-select"
+                                    aria-required="true"
+                                    aria-describedby="train-feature-help"
                                 >
                                     <option value="alpha158">
                                         Alpha158 (158 features)
@@ -928,28 +1915,124 @@
                                         Alpha360 (360 features)
                                     </option>
                                 </select>
+                                <div id="train-feature-help" class="form-help">
+                                    Feature sets generate trading signals from price data
+                                </div>
                             </div>
                             <div class="form-group">
-                                <label class="form-label">Model Type</label>
+                                <label for="train-model-type" class="form-label">
+                                    Model Type
+                                    <span class="required" aria-label="required">*</span>
+                                </label>
                                 <select
+                                    id="train-model-type"
                                     v-model="forms.train.model_handler"
                                     class="form-select"
+                                    aria-required="true"
+                                    aria-describedby="train-model-help"
                                 >
                                     <option value="lightgbm">LightGBM</option>
                                     <option value="xgboost">XGBoost</option>
                                     <option value="linear">Linear</option>
                                 </select>
+                                <div id="train-model-help" class="form-help">
+                                    Machine learning algorithm for prediction
+                                </div>
                             </div>
+                            <div class="advanced-toggle">
+                                <button
+                                    type="button"
+                                    class="btn btn-secondary btn-sm"
+                                    @click="toggles.trainSegments = !toggles.trainSegments"
+                                    :aria-expanded="toggles.trainSegments"
+                                    aria-controls="train-segments-panel"
+                                >
+                                    {{ toggles.trainSegments ? 'Hide Segment Overrides' : 'Show Segment Overrides' }}
+                                </button>
+                            </div>
+                            <div
+                                v-if="toggles.trainSegments"
+                                id="train-segments-panel"
+                                class="advanced-panel"
+                            >
+                                <h4>Custom Train/Validation/Test Windows</h4>
+                                <div class="grid-3">
+                                    <div>
+                                        <label for="train-segment-train-start" class="form-label">Train Start</label>
+                                        <input
+                                            type="date"
+                                            id="train-segment-train-start"
+                                            class="form-input"
+                                            v-model="forms.train.segments.train_start"
+                                        />
+                                        <label for="train-segment-train-end" class="form-label" style="margin-top:8px;">Train End</label>
+                                        <input
+                                            type="date"
+                                            id="train-segment-train-end"
+                                            class="form-input"
+                                            v-model="forms.train.segments.train_end"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label for="train-segment-valid-start" class="form-label">Valid Start</label>
+                                        <input
+                                            type="date"
+                                            id="train-segment-valid-start"
+                                            class="form-input"
+                                            v-model="forms.train.segments.valid_start"
+                                        />
+                                        <label for="train-segment-valid-end" class="form-label" style="margin-top:8px;">Valid End</label>
+                                        <input
+                                            type="date"
+                                            id="train-segment-valid-end"
+                                            class="form-input"
+                                            v-model="forms.train.segments.valid_end"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label for="train-segment-test-start" class="form-label">Test Start</label>
+                                        <input
+                                            type="date"
+                                            id="train-segment-test-start"
+                                            class="form-input"
+                                            v-model="forms.train.segments.test_start"
+                                        />
+                                        <label for="train-segment-test-end" class="form-label" style="margin-top:8px;">Test End</label>
+                                        <input
+                                            type="date"
+                                            id="train-segment-test-end"
+                                            class="form-input"
+                                            v-model="forms.train.segments.test_end"
+                                        />
+                                    </div>
+                                </div>
+                                <p class="form-help-inline" style="margin-top:12px;">
+                                    Leave fields blank to auto-split the dataset range. Values are validated before training starts.
+                                </p>
+                            </div>
+                            <!-- Form validation error message -->
+                            <div
+                                v-if="formSubmitAttempted.train && !forms.train.dataset"
+                                class="form-error"
+                                role="alert"
+                                aria-live="assertive"
+                            >
+                                <span class="form-error-icon" aria-hidden="true">⚠️</span>
+                                <span>Please select a dataset before training a model</span>
+                            </div>
+
                             <button
                                 @click="trainModel"
                                 class="btn btn-primary"
-                                :disabled="loading || !forms.train.dataset"
+                                :disabled="loading"
+                                :aria-invalid="formSubmitAttempted.train && !forms.train.dataset"
+                                aria-label="Train new model"
                             >
                                 <span v-if="!loading">Train Model</span>
-                                <span v-else
-                                    ><span class="spinner"></span>
-                                    Training...</span
-                                >
+                                <span v-else>
+                                    <span class="spinner" aria-hidden="true"></span>
+                                    <span aria-live="polite">Training...</span>
+                                </span>
                             </button>
                             <div
                                 v-if="forms.train.result"
@@ -972,13 +2055,19 @@
                         <div class="section">
                             <div class="section-title">📈 Run Backtest</div>
                             <div class="form-group">
-                                <label class="form-label">Select Model</label>
+                                <label for="backtest-model" class="form-label">
+                                    Select Model
+                                    <span class="required" aria-label="required">*</span>
+                                </label>
                                 <select
+                                    id="backtest-model"
                                     v-model="forms.backtest.model_id"
                                     class="form-select"
                                     @focus="loadModels"
+                                    aria-required="true"
+                                    aria-describedby="backtest-model-help"
                                 >
-                                    <option value="">
+                                    <option value="" disabled>
                                         Select a trained model...
                                     </option>
                                     <option
@@ -986,19 +2075,28 @@
                                         :key="model.model_id"
                                         :value="model.model_id"
                                     >
-                                        {{ model.model_id }} ({{ model.handler
-                                        }})
+                                        {{ model.model_id }} ({{ model.handler }})
                                     </option>
                                 </select>
+                                <div id="backtest-model-help" class="form-help">
+                                    Choose a trained model to backtest
+                                </div>
                             </div>
                             <div class="form-group">
-                                <label class="form-label">Dataset</label>
+                                <label for="backtest-dataset" class="form-label">
+                                    Dataset
+                                    <span class="required" aria-label="required">*</span>
+                                </label>
                                 <select
+                                    id="backtest-dataset"
                                     v-model="forms.backtest.dataset"
                                     class="form-select"
                                     @focus="loadDatasets"
+                                    @change="handleBacktestDatasetChange"
+                                    aria-required="true"
+                                    aria-describedby="backtest-dataset-help"
                                 >
-                                    <option value="">Select dataset...</option>
+                                    <option value="" disabled>Select dataset...</option>
                                     <option
                                         v-for="ds in datasets"
                                         :key="ds.name"
@@ -1007,52 +2105,231 @@
                                         {{ ds.name }}
                                     </option>
                                 </select>
+                                <div id="backtest-dataset-help" class="form-help">
+                                    Historical data for backtesting
+                                </div>
                             </div>
                             <div class="grid-2">
                                 <div class="form-group">
-                                    <label class="form-label"
-                                        >Transaction Costs</label
-                                    >
-                                    <select
-                                        v-model="forms.backtest.costs"
-                                        class="form-select"
-                                    >
-                                        <option value="low">Low (0.05%)</option>
-                                        <option value="medium">
-                                            Medium (0.1%)
-                                        </option>
-                                        <option value="high">
-                                            High (0.2%)
-                                        </option>
-                                    </select>
+                                    <label for="backtest-start-date" class="form-label">Start Date</label>
+                                    <input
+                                        type="date"
+                                        id="backtest-start-date"
+                                        class="form-input"
+                                        v-model="forms.backtest.start_date"
+                                    />
+                                    <div class="form-help">
+                                        Leave blank to use the dataset start date
+                                    </div>
                                 </div>
                                 <div class="form-group">
-                                    <label class="form-label">Rebalance</label>
+                                    <label for="backtest-end-date" class="form-label">End Date</label>
+                                    <input
+                                        type="date"
+                                        id="backtest-end-date"
+                                        class="form-input"
+                                        v-model="forms.backtest.end_date"
+                                    />
+                                    <div class="form-help">
+                                        Leave blank to use the dataset end date
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="grid-2">
+                                <div class="form-group">
+                                    <label for="backtest-benchmark" class="form-label">Benchmark Symbol</label>
+                                    <input
+                                        type="text"
+                                        id="backtest-benchmark"
+                                        class="form-input"
+                                        v-model="forms.backtest.benchmark"
+                                        placeholder="BTC_USDT"
+                                    />
+                                    <div class="form-help">
+                                        Used to compute relative performance metrics
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="backtest-funding-toggle" class="form-label">Funding Costs</label>
+                                    <div class="toggle-field" id="backtest-funding-toggle">
+                                        <input
+                                            type="checkbox"
+                                            :aria-checked="forms.backtest.funding"
+                                            v-model="forms.backtest.funding"
+                                        />
+                                        <span>Include funding-rate costs (perpetual futures)</span>
+                                    </div>
+                                    <div class="form-help-inline">
+                                        Enabled only when backtesting derivatives that incur funding.
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="grid-2">
+                                <div class="form-group">
+                                    <label for="backtest-costs" class="form-label">
+                                        Transaction Costs
+                                    </label>
                                     <select
+                                        id="backtest-costs"
+                                        v-model="forms.backtest.costs"
+                                        class="form-select"
+                                        aria-describedby="backtest-costs-help"
+                                    >
+                                        <option value="low">Low (0.05%)</option>
+                                        <option value="medium">Medium (0.1%)</option>
+                                        <option value="high">High (0.2%)</option>
+                                    </select>
+                                    <div id="backtest-costs-help" class="form-help">
+                                        Trading fees and slippage
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="backtest-rebalance" class="form-label">
+                                        Rebalance
+                                    </label>
+                                    <select
+                                        id="backtest-rebalance"
                                         v-model="forms.backtest.rebalance"
                                         class="form-select"
+                                        aria-describedby="backtest-rebalance-help"
                                     >
                                         <option value="weekly">Weekly</option>
                                         <option value="monthly">Monthly</option>
                                     </select>
+                                    <div id="backtest-rebalance-help" class="form-help">
+                                        Portfolio rebalancing frequency
+                                    </div>
                                 </div>
                             </div>
                             <button
                                 @click="runBacktest"
                                 class="btn btn-primary"
                                 :disabled="loading || !forms.backtest.model_id"
+                                aria-label="Run backtest simulation"
                             >
                                 <span v-if="!loading">Run Backtest</span>
-                                <span v-else
-                                    ><span class="spinner"></span>
-                                    Running...</span
-                                >
+                                <span v-else>
+                                    <span class="spinner" aria-hidden="true"></span>
+                                    <span aria-live="polite">Running...</span>
+                                </span>
                             </button>
                             <div
                                 v-if="forms.backtest.result"
                                 :class="['result-box', forms.backtest.status]"
+                                role="status"
+                                aria-live="polite"
                             >
                                 {{ forms.backtest.result }}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Processes -->
+                    <div v-if="page === 'processes'">
+                        <div class="page-header">
+                            <h1 class="page-title">Process Monitor</h1>
+                            <p class="page-subtitle">
+                                View and manage all active and completed processes
+                            </p>
+                        </div>
+
+                        <div class="section">
+                            <div class="section-title">⚙️ All Processes</div>
+                            <div v-if="processes.length === 0" class="empty">
+                                No processes found
+                            </div>
+                            <div
+                                v-for="process in processes"
+                                :key="process.process_id"
+                                :class="['process-card', process.status]"
+                                role="article"
+                                :aria-label="'Process ' + process.process_type + ' ' + process.process_id + ', status: ' + process.status"
+                            >
+                                <div class="process-header">
+                                    <div class="process-title">
+                                        <div
+                                            :class="['process-status-icon', process.status]"
+                                            :aria-label="'Status: ' + process.status"
+                                        >
+                                            <span v-if="process.status === 'running'" class="icon-spin" aria-hidden="true">⟳</span>
+                                            <span v-else-if="process.status === 'completed'" aria-hidden="true">✓</span>
+                                            <span v-else-if="process.status === 'failed'" aria-hidden="true">✗</span>
+                                            <span v-else-if="process.status === 'cancelled'" aria-hidden="true">⊗</span>
+                                        </div>
+                                        <span
+                                            :title="'UUID: ' + process.process_id"
+                                            style="cursor: help;"
+                                        >
+                                            {{ process.display_id || (process.process_type + ' - ' + process.process_id) }}
+                                        </span>
+                                    </div>
+                                    <div class="process-actions">
+                                        <button
+                                            @click="toggleProcessLogs(process.process_id)"
+                                            class="btn-expand"
+                                            :aria-label="expandedProcesses[process.process_id] ? 'Hide logs for process ' + process.process_id : 'Show logs for process ' + process.process_id"
+                                            :aria-expanded="expandedProcesses[process.process_id] || false"
+                                            :aria-controls="'logs-' + process.process_id"
+                                        >
+                                            {{ expandedProcesses[process.process_id] ? 'Hide Logs' : 'Show Logs' }}
+                                        </button>
+                                        <button
+                                            v-if="process.status === 'running' || cancellingProcesses[process.process_id]"
+                                            @click="cancelProcess(process.process_id)"
+                                            class="btn-cancel"
+                                            :disabled="cancellingProcesses[process.process_id]"
+                                            :aria-label="cancellingProcesses[process.process_id] ? 'Cancelling process ' + process.process_id : 'Cancel process ' + process.process_id"
+                                        >
+                                            <span v-if="cancellingProcesses[process.process_id]" class="btn-cancel-spinner" aria-hidden="true"></span>
+                                            <span>{{ cancellingProcesses[process.process_id] ? 'Cancelling...' : 'Cancel' }}</span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="process-meta" aria-label="Process metadata">
+                                    {{ process.metrics.current_step }} |
+                                    Elapsed: {{ formatDuration(process) }}
+                                    <span v-if="process.status === 'running' && process.metrics.estimated_seconds_remaining">
+                                        | ETA: ~{{ formatETA(process.metrics.estimated_seconds_remaining) }}
+                                    </span>
+                                </div>
+
+                                <div class="progress-bar-container" role="progressbar" :aria-valuenow="process.metrics.progress_percent" aria-valuemin="0" aria-valuemax="100" :aria-label="'Progress: ' + process.metrics.progress_percent.toFixed(1) + '%'">
+                                    <div :class="['progress-bar', process.status]" :style="{ width: process.metrics.progress_percent + '%' }"></div>
+                                </div>
+
+                                <div class="progress-text">
+                                    <span>{{ process.metrics.progress_percent.toFixed(1) }}%</span>
+                                    <span v-if="process.metrics.total_steps > 0">
+                                        Step {{ process.metrics.completed_steps }} / {{ process.metrics.total_steps }}
+                                    </span>
+                                </div>
+
+                                <div v-if="expandedProcesses[process.process_id]" class="logs-container">
+                                    <div
+                                        :class="['process-logs', { expanded: expandedProcesses[process.process_id] }]"
+                                        :id="'logs-' + process.process_id"
+                                        role="log"
+                                        aria-live="polite"
+                                        aria-atomic="false"
+                                        :aria-label="'Logs for process ' + process.process_id"
+                                        @scroll="handleLogScroll(process.process_id, $event)"
+                                        :ref="'logs-' + process.process_id"
+                                    >
+                                        <div v-for="log in process.logs.slice(-20)" :key="log.timestamp" :class="['log-entry', log.level]">
+                                            <span class="sr-only">{{ log.level }} at {{ formatLogTime(log.timestamp) }}:</span>
+                                            [{{ formatLogTime(log.timestamp) }}] {{ log.message }}
+                                        </div>
+                                    </div>
+                                    <button
+                                        :class="['scroll-to-bottom-btn', { visible: showScrollButton[process.process_id] }]"
+                                        @click="scrollLogsToBottom(process.process_id)"
+                                        aria-label="Scroll to bottom of logs"
+                                    >
+                                        <span aria-hidden="true">↓</span>
+                                        <span>Bottom</span>
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1071,13 +2348,19 @@
                                 🔮 Generate Predictions
                             </div>
                             <div class="form-group">
-                                <label class="form-label">Select Model</label>
+                                <label for="predict-model" class="form-label">
+                                    Select Model
+                                    <span class="required" aria-label="required">*</span>
+                                </label>
                                 <select
+                                    id="predict-model"
                                     v-model="forms.predict.model_id"
                                     class="form-select"
                                     @focus="loadModels"
+                                    aria-required="true"
+                                    aria-describedby="predict-model-help"
                                 >
-                                    <option value="">
+                                    <option value="" disabled>
                                         Select a trained model...
                                     </option>
                                     <option
@@ -1085,19 +2368,27 @@
                                         :key="model.model_id"
                                         :value="model.model_id"
                                     >
-                                        {{ model.model_id }} ({{ model.handler
-                                        }})
+                                        {{ model.model_id }} ({{ model.handler }})
                                     </option>
                                 </select>
+                                <div id="predict-model-help" class="form-help">
+                                    Choose a trained model to generate predictions
+                                </div>
                             </div>
                             <div class="form-group">
-                                <label class="form-label">Dataset</label>
+                                <label for="predict-dataset" class="form-label">
+                                    Dataset
+                                    <span class="required" aria-label="required">*</span>
+                                </label>
                                 <select
+                                    id="predict-dataset"
                                     v-model="forms.predict.dataset"
                                     class="form-select"
                                     @focus="loadDatasets"
+                                    aria-required="true"
+                                    aria-describedby="predict-dataset-help"
                                 >
-                                    <option value="">Select dataset...</option>
+                                    <option value="" disabled>Select dataset...</option>
                                     <option
                                         v-for="ds in datasets"
                                         :key="ds.name"
@@ -1106,47 +2397,135 @@
                                         {{ ds.name }}
                                     </option>
                                 </select>
+                                <div id="predict-dataset-help" class="form-help">
+                                    Dataset to generate predictions for
+                                </div>
                             </div>
                             <button
                                 @click="generatePredictions"
                                 class="btn btn-primary"
                                 :disabled="loading || !forms.predict.model_id"
+                                aria-label="Generate predictions"
                             >
-                                <span v-if="!loading"
-                                    >Generate Predictions</span
-                                >
-                                <span v-else
-                                    ><span class="spinner"></span>
-                                    Generating...</span
-                                >
+                                <span v-if="!loading">Generate Predictions</span>
+                                <span v-else>
+                                    <span class="spinner" aria-hidden="true"></span>
+                                    <span aria-live="polite">Generating...</span>
+                                </span>
                             </button>
                             <div
                                 v-if="forms.predict.result"
                                 :class="['result-box', forms.predict.status]"
+                                role="status"
+                                aria-live="polite"
                             >
                                 {{ forms.predict.result }}
                             </div>
                         </div>
                     </div>
+                </main>
+
+                <!-- Global Status Announcement for Screen Readers -->
+                <div
+                    role="status"
+                    aria-live="polite"
+                    aria-atomic="true"
+                    class="sr-only"
+                >
+                    {{ statusAnnouncement }}
                 </div>
 
                 <!-- Activity Panel -->
-                <div class="activity">
+                <aside class="activity" role="complementary" aria-label="Activity Feed">
                     <div class="activity-header">Activity Feed</div>
-                    <div class="activity-feed">
-                        <div v-if="activities.length === 0" class="empty">
+                    <div class="activity-feed" role="log" aria-live="polite" aria-atomic="false">
+                        <div v-if="activities.length === 0" class="empty" role="status">
                             No activity yet
                         </div>
                         <div
                             v-for="act in activities.slice(0, 30)"
                             :key="act.id"
                             :class="['activity-item', act.class]"
+                            role="article"
+                            :aria-label="'Activity: ' + act.message"
                         >
                             <div>{{ act.message }}</div>
                             <div class="activity-time">
-                                {{ formatTime(act.timestamp) }}
+                                <time :datetime="act.timestamp">{{ formatTime(act.timestamp) }}</time>
                             </div>
                         </div>
+                    </div>
+                </aside>
+            </div>
+
+            <!-- Toast Notifications Container -->
+            <div class="toast-container" role="region" aria-label="Notifications" aria-live="polite">
+                <div v-for="toast in toasts" :key="toast.id" :class="['toast', toast.type]" role="alert">
+                    <div class="toast-message">{{ toast.message }}</div>
+                    <button @click="closeToast(toast.id)" class="toast-close" aria-label="Dismiss notification">
+                        ×
+                    </button>
+                </div>
+            </div>
+
+            <!-- WebSocket Authentication Modal -->
+            <div
+                v-if="wsAuth.showModal"
+                class="modal-overlay"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="ws-auth-title"
+                aria-describedby="ws-auth-desc"
+                @click="cancelWsAuthModal"
+            >
+                <div class="modal-dialog" @click.stop>
+                    <h2 class="modal-header" id="ws-auth-title">WebSocket Authentication</h2>
+                    <div class="modal-body" id="ws-auth-desc">
+                        Enter a valid API key to receive a short-lived WebSocket token.
+                    </div>
+                    <form @submit.prevent="submitWsApiKey">
+                        <div class="form-group">
+                            <label for="ws-auth-key" class="form-label">API Key</label>
+                            <input
+                                id="ws-auth-key"
+                                type="password"
+                                class="form-input"
+                                v-model="wsAuth.apiKeyInput"
+                                required
+                                autocomplete="off"
+                                minlength="10"
+                                placeholder="Enter API key"
+                            />
+                        </div>
+                        <p v-if="wsAuth.error" class="form-error" role="alert">{{ wsAuth.error }}</p>
+                        <div class="modal-actions">
+                            <button type="button" class="modal-btn modal-btn-secondary" @click="cancelWsAuthModal">
+                                Cancel
+                            </button>
+                            <button type="submit" class="modal-btn modal-btn-primary" :disabled="wsAuth.isSubmitting">
+                                <span v-if="!wsAuth.isSubmitting">Authenticate</span>
+                                <span v-else>
+                                    <span class="spinner" aria-hidden="true"></span>
+                                    Processing...
+                                </span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Accessible Confirmation Modal -->
+            <div v-if="modal.show" class="modal-overlay" @click="modal.show = false" role="dialog" aria-modal="true" :aria-labelledby="'modal-title-' + modal.id" :aria-describedby="'modal-desc-' + modal.id">
+                <div class="modal-dialog" @click.stop role="document">
+                    <h2 class="modal-header" :id="'modal-title-' + modal.id">{{ modal.title }}</h2>
+                    <div class="modal-body" :id="'modal-desc-' + modal.id">{{ modal.message }}</div>
+                    <div class="modal-actions">
+                        <button @click="modal.onCancel(); modal.show = false" class="modal-btn modal-btn-secondary" ref="modalCancelBtn">
+                            {{ modal.cancelText || 'Cancel' }}
+                        </button>
+                        <button @click="modal.onConfirm(); modal.show = false" class="modal-btn modal-btn-primary" ref="modalConfirmBtn">
+                            {{ modal.confirmText || 'Confirm' }}
+                        </button>
                     </div>
                 </div>
             </div>
@@ -1171,6 +2550,45 @@
                         expandedProcesses: {},
                         processWebSockets: {},
                         nextId: 1,
+                        toasts: [],
+                        toastIdCounter: 0,
+                        statusAnnouncement: '',
+                        // Loading states for dropdowns
+                        loadingStates: {
+                            datasets: false,
+                            models: false,
+                        },
+                        // Error states for dropdowns
+                        errorStates: {
+                            datasets: null,
+                            models: null,
+                        },
+                        // Cancel process loading states
+                        cancellingProcesses: {},
+                        // Scroll button visibility per process
+                        showScrollButton: {},
+                        // Track auto-scroll state per process
+                        autoScrollEnabled: {},
+                        // Modal state
+                        modal: {
+                            show: false,
+                            id: 0,
+                            title: '',
+                            message: '',
+                            confirmText: 'Confirm',
+                            cancelText: 'Cancel',
+                            onConfirm: () => {},
+                            onCancel: () => {}
+                        },
+                        // WebSocket reconnection tracking
+                        wsReconnectAttempts: 0,
+                        wsMaxReconnectAttempts: 10,
+                        wsReconnectDelay: 3000,
+                        // Event buffer for replay
+                        eventBuffer: [],
+                        lastEventTimestamp: null,
+                        // Process state versioning for race condition prevention
+                        processStateVersions: {},
                         forms: {
                             data: {
                                 symbol: "BTC/USDT",
@@ -1180,40 +2598,81 @@
                                 interval: "1d",
                                 result: "",
                                 status: "",
+                                errors: {}
                             },
                             convert: {
                                 dataset: "crypto_btc_daily",
                                 freq: "1d",
                                 result: "",
                                 status: "",
+                                errors: {}
                             },
                             train: {
                                 dataset: "",
                                 feature_handler: "alpha158",
                                 model_handler: "lightgbm",
+                                segments: {
+                                    train_start: "",
+                                    train_end: "",
+                                    valid_start: "",
+                                    valid_end: "",
+                                    test_start: "",
+                                    test_end: "",
+                                },
                                 result: "",
                                 status: "",
+                                errors: {}
                             },
                             backtest: {
                                 model_id: "",
                                 dataset: "",
                                 costs: "medium",
                                 rebalance: "weekly",
+                                start_date: "",
+                                end_date: "",
+                                benchmark: "BTC_USDT",
+                                funding: false,
                                 result: "",
                                 status: "",
+                                errors: {}
                             },
                             predict: {
                                 model_id: "",
                                 dataset: "",
                                 result: "",
                                 status: "",
+                                errors: {}
                             },
+                        },
+                        // Track form submission attempts for validation
+                        formSubmitAttempted: {
+                            train: false,
+                            backtest: false,
+                            predict: false,
+                            convert: false,
+                            data: false
+                        },
+                        toggles: {
+                            trainSegments: false,
+                            backtestAdvanced: false,
+                        },
+                        wsAuth: {
+                            token: '',
+                            expiresAt: 0,
+                            showModal: false,
+                            apiKeyInput: '',
+                            error: '',
+                            isSubmitting: false,
+                            refreshTimer: null,
                         },
                     };
                 },
                 mounted() {
-                    this.connectWebSocket();
-                    this.connectProcessWebSocket();
+                    this.loadStoredWsAuth();
+                    if (!this.wsAuth.token) {
+                        this.openWsAuthModal();
+                    }
+                    this.initializeRealtimeConnections();
                     this.loadModels();
                     this.loadDatasets();
                     this.loadProcesses();
@@ -1222,34 +2681,394 @@
                     setInterval(() => {
                         this.$forceUpdate();
                     }, 1000);
+
+                    // Add keyboard shortcuts
+                    document.addEventListener('keydown', this.handleKeyboard);
+                },
+                beforeUnmount() {
+                    // Cleanup keyboard listener
+                    document.removeEventListener('keydown', this.handleKeyboard);
+
+                    // Close WebSocket connections
+                    if (this.ws) this.ws.close();
+                    if (this.processWs) this.processWs.close();
+                    Object.values(this.processWebSockets).forEach(ws => ws.close());
+                    if (this.wsAuth.refreshTimer) {
+                        clearTimeout(this.wsAuth.refreshTimer);
+                        this.wsAuth.refreshTimer = null;
+                    }
                 },
                 methods: {
+                    showToast(type, message, duration = 5000) {
+                        const id = this.toastIdCounter++;
+                        this.toasts.push({ id, type, message });
+
+                        // Update screen reader announcement
+                        this.statusAnnouncement = message;
+
+                        if (duration > 0) {
+                            setTimeout(() => {
+                                this.toasts = this.toasts.filter(t => t.id !== id);
+                            }, duration);
+                        }
+                    },
+                    loadStoredWsAuth() {
+                        try {
+                            const raw = localStorage.getItem('wsAuth');
+                            if (!raw) {
+                                return;
+                            }
+                            const parsed = JSON.parse(raw);
+                            if (!parsed.token || !parsed.expiresAt) {
+                                localStorage.removeItem('wsAuth');
+                                return;
+                            }
+                            const expiresAt = Number(parsed.expiresAt);
+                            if (Number.isNaN(expiresAt) || expiresAt <= Date.now()) {
+                                localStorage.removeItem('wsAuth');
+                                return;
+                            }
+                            this.wsAuth.token = parsed.token;
+                            this.wsAuth.expiresAt = expiresAt;
+                            this.scheduleWsTokenRefresh(expiresAt);
+                        } catch (error) {
+                            console.error('Failed to load stored WS auth:', error);
+                            localStorage.removeItem('wsAuth');
+                        }
+                    },
+                    persistWsAuth(token, expiresAtMs) {
+                        this.wsAuth.token = token;
+                        this.wsAuth.expiresAt = expiresAtMs;
+                        localStorage.setItem('wsAuth', JSON.stringify({ token, expiresAt: expiresAtMs }));
+                        this.scheduleWsTokenRefresh(expiresAtMs);
+                    },
+                    scheduleWsTokenRefresh(expiresAtMs) {
+                        if (this.wsAuth.refreshTimer) {
+                            clearTimeout(this.wsAuth.refreshTimer);
+                            this.wsAuth.refreshTimer = null;
+                        }
+
+                        if (!expiresAtMs) {
+                            return;
+                        }
+
+                        const advanceNoticeMs = 2 * 60 * 1000; // 2 minutes prior
+                        const delay = Math.max(0, expiresAtMs - Date.now() - advanceNoticeMs);
+
+                        this.wsAuth.refreshTimer = setTimeout(() => {
+                            this.showToast('warning', 'WebSocket token expiring soon. Refresh authentication.', 5000);
+                            this.openWsAuthModal();
+                        }, delay);
+                    },
+                    async ensureWsToken(autoPrompt = true) {
+                        if (this.wsAuth.token && Date.now() < this.wsAuth.expiresAt - 60000) {
+                            return true;
+                        }
+
+                        if (this.wsAuth.token && Date.now() >= this.wsAuth.expiresAt - 60000) {
+                            this.showToast('warning', 'WebSocket token expired. Please refresh authentication.', 4000);
+                            this.clearWsToken(false);
+                        }
+
+                        if (autoPrompt && !this.wsAuth.showModal) {
+                            this.openWsAuthModal();
+                        }
+
+                        return false;
+                    },
+                    async initializeRealtimeConnections() {
+                        const hasToken = await this.ensureWsToken(false);
+                        if (!hasToken) {
+                            return;
+                        }
+                        this.disconnectWebSockets();
+                        this.connectWebSocket();
+                        this.connectProcessWebSocket();
+                    },
+                    openWsAuthModal() {
+                        this.wsAuth.showModal = true;
+                        this.wsAuth.apiKeyInput = '';
+                        this.wsAuth.error = '';
+                    },
+                    cancelWsAuthModal() {
+                        this.wsAuth.showModal = false;
+                        this.wsAuth.apiKeyInput = '';
+                        this.wsAuth.error = '';
+                        if (!this.wsAuth.token) {
+                            this.disconnectWebSockets();
+                        }
+                    },
+                    clearWsToken(prompt = true) {
+                        if (this.wsAuth.refreshTimer) {
+                            clearTimeout(this.wsAuth.refreshTimer);
+                            this.wsAuth.refreshTimer = null;
+                        }
+                        this.wsAuth.token = '';
+                        this.wsAuth.expiresAt = 0;
+                        localStorage.removeItem('wsAuth');
+                        this.disconnectWebSockets();
+                        if (prompt) {
+                            this.openWsAuthModal();
+                        }
+                    },
+                    wsTokenRemainingLabel() {
+                        if (!this.wsAuth.token || !this.wsAuth.expiresAt) {
+                            return 'not set';
+                        }
+                        const remaining = this.wsAuth.expiresAt - Date.now();
+                        if (remaining <= 0) {
+                            return 'expired';
+                        }
+                        const totalSeconds = Math.floor(remaining / 1000);
+                        const minutes = Math.floor(totalSeconds / 60);
+                        const seconds = totalSeconds % 60;
+                        if (minutes > 0) {
+                            return `${minutes}m ${seconds.toString().padStart(2, '0')}s`;
+                        }
+                        return `${seconds}s`;
+                    },
+                    async submitWsApiKey() {
+                        if (!this.wsAuth.apiKeyInput) {
+                            this.wsAuth.error = 'API key is required';
+                            return;
+                        }
+                        this.wsAuth.isSubmitting = true;
+                        this.wsAuth.error = '';
+                        try {
+                            const response = await fetch('/api/auth/ws-token', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ api_key: this.wsAuth.apiKeyInput.trim() }),
+                            });
+
+                            if (!response.ok) {
+                                const detail = await response.json().catch(() => ({}));
+                                const message = detail?.detail || `Server responded with ${response.status}`;
+                                throw new Error(message);
+                            }
+
+                            const data = await response.json();
+                            const expiresAtMs = Date.parse(data.expires_at);
+                            if (Number.isNaN(expiresAtMs)) {
+                                throw new Error('Server returned an invalid expiration time');
+                            }
+
+                            this.persistWsAuth(data.token, expiresAtMs);
+                            this.wsAuth.showModal = false;
+                            this.wsAuth.apiKeyInput = '';
+                            this.showToast('success', 'WebSocket authentication updated.', 4000);
+                            await this.initializeRealtimeConnections();
+                        } catch (error) {
+                            console.error('WebSocket authentication failed:', error);
+                            this.wsAuth.error = error?.message || 'Authentication failed';
+                            this.showToast('error', this.wsAuth.error, 5000);
+                        } finally {
+                            this.wsAuth.isSubmitting = false;
+                        }
+                    },
+
+                    closeToast(id) {
+                        this.toasts = this.toasts.filter(t => t.id !== id);
+                    },
+
+                    handleKeyboard(e) {
+                        // Ignore if typing in input/textarea/select
+                        if (e.target.matches('input, textarea, select')) return;
+
+                        switch (e.key) {
+                            case 'r':
+                            case 'R':
+                                // Refresh all data
+                                this.loadProcesses();
+                                this.loadModels();
+                                this.loadDatasets();
+                                this.showToast('info', 'Refreshed all data', 2000);
+                                break;
+
+                            case 'Escape':
+                                // Close all expanded logs
+                                this.expandedProcesses = {};
+                                this.$forceUpdate();
+                                break;
+
+                            case '1':
+                            case '2':
+                            case '3':
+                            case '4':
+                            case '5':
+                                // Navigate to page
+                                const pages = ['dashboard', 'data', 'models', 'backtest', 'predictions'];
+                                const pageIndex = parseInt(e.key) - 1;
+                                if (pageIndex < pages.length) {
+                                    this.page = pages[pageIndex];
+                                }
+                                break;
+                        }
+                    },
+
                     connectWebSocket() {
+                        if (!this.wsAuth.token) {
+                            return;
+                        }
+
                         const protocol =
                             window.location.protocol === "https:"
                                 ? "wss:"
                                 : "ws:";
-                        const wsUrl = `${protocol}//${window.location.host}/ws/events`;
+                        const wsUrl = `${protocol}//${window.location.host}/ws/events?token=${encodeURIComponent(this.wsAuth.token)}`;
                         this.ws = new WebSocket(wsUrl);
 
                         this.ws.onopen = () => {
                             this.connected = true;
                             this.addActivity("WebSocket connected", "success");
+
+                            // Request event history replay if we have a last timestamp
+                            if (this.lastEventTimestamp) {
+                                try {
+                                    this.ws.send(JSON.stringify({
+                                        type: "request_history",
+                                        since: this.lastEventTimestamp
+                                    }));
+                                    console.log('Requested event history since:', this.lastEventTimestamp);
+                                } catch (error) {
+                                    console.error('Failed to request event history:', error);
+                                }
+                            }
+
+                            // Replay buffered events that occurred during disconnection
+                            if (this.eventBuffer.length > 0) {
+                                console.log('Replaying', this.eventBuffer.length, 'buffered events');
+                                this.eventBuffer.forEach(event => this.handleEvent(event));
+                                this.eventBuffer = [];
+                            }
                         };
 
-                        this.ws.onclose = () => {
+                        this.ws.onclose = (event) => {
                             this.connected = false;
-                            setTimeout(() => this.connectWebSocket(), 3000);
+                            this.ws = null;
+                            this.handleSocketClosure(event, () => this.connectWebSocket());
+                        };
+
+                        this.ws.onerror = (event) => {
+                            console.error('WebSocket error', event);
                         };
 
                         this.ws.onmessage = (event) => {
                             const data = JSON.parse(event.data);
+
+                            // Update last event timestamp
+                            if (data.timestamp) {
+                                this.lastEventTimestamp = data.timestamp;
+                            }
+
                             if (data.type === "history") {
                                 data.events.forEach((e) => this.handleEvent(e));
                             } else {
                                 this.handleEvent(data);
+
+                                // Buffer events when disconnected for local replay
+                                if (!this.connected) {
+                                    this.eventBuffer.push(data);
+                                }
                             }
                         };
+                    },
+                    connectProcessWebSocket() {
+                        if (!this.wsAuth.token) {
+                            return;
+                        }
+
+                        const protocol =
+                            window.location.protocol === "https:"
+                                ? "wss:"
+                                : "ws:";
+                        const wsUrl = `${protocol}//${window.location.host}/ws/processes?token=${encodeURIComponent(this.wsAuth.token)}`;
+                        this.processWs = new WebSocket(wsUrl);
+
+                        this.processWs.onopen = () => {
+                            console.log("Process WebSocket connected");
+                            this.wsReconnectAttempts = 0;
+                        };
+
+                        this.processWs.onclose = (event) => {
+                            console.log("Process WebSocket disconnected");
+                            this.processWs = null;
+                            this.handleSocketClosure(event, () => this.connectProcessWebSocket());
+                        };
+
+                        this.processWs.onerror = (event) => {
+                            console.error('Process WebSocket error', event);
+                        };
+
+                        this.processWs.onmessage = (event) => {
+                            const data = JSON.parse(event.data);
+                            if (data.type === "process_update") {
+                                const newProcesses = data.processes || [];
+
+                                newProcesses.forEach(newProc => {
+                                    if (!this.processStateVersions[newProc.process_id]) {
+                                        this.processStateVersions[newProc.process_id] = 0;
+                                    }
+                                    this.processStateVersions[newProc.process_id]++;
+                                });
+
+                                this.processes = newProcesses;
+
+                                Object.keys(this.expandedProcesses).forEach(processId => {
+                                    if (this.expandedProcesses[processId] && this.autoScrollEnabled[processId]) {
+                                        this.$nextTick(() => {
+                                            this.scrollLogsToBottom(processId);
+                                        });
+                                    }
+                                });
+                            }
+                        };
+                    },
+                    disconnectWebSockets() {
+                        if (this.ws) {
+                            try {
+                                this.ws.onclose = null;
+                                this.ws.onerror = null;
+                                this.ws.close();
+                            } catch (error) {
+                                console.warn('Error closing WebSocket', error);
+                            }
+                            this.ws = null;
+                            this.connected = false;
+                        }
+
+                        if (this.processWs) {
+                            try {
+                                this.processWs.onclose = null;
+                                this.processWs.onerror = null;
+                                this.processWs.close();
+                            } catch (error) {
+                                console.warn('Error closing process WebSocket', error);
+                            }
+                            this.processWs = null;
+                        }
+                        Object.values(this.processWebSockets).forEach(wsInstance => {
+                            try {
+                                wsInstance.close();
+                            } catch (error) {
+                                console.warn('Error closing per-process WebSocket', error);
+                            }
+                        });
+                        this.processWebSockets = {};
+                    },
+                    handleSocketClosure(event, reconnectFn) {
+                        const authFailureCodes = [4401, 4403, 1008];
+                        const authFailure = authFailureCodes.includes(event.code) || (event.reason && event.reason.toLowerCase().includes('auth'));
+
+                        if (authFailure) {
+                            this.showToast('error', 'WebSocket authentication failed or expired. Please sign in again.', 5000);
+                            this.clearWsToken();
+                            return;
+                        }
+
+                        if (this.wsAuth.token) {
+                            setTimeout(() => reconnectFn(), 3000);
+                        }
                     },
                     handleEvent(event) {
                         let msg = event.type;
@@ -1281,11 +3100,136 @@
                             console.error("Failed to load models:", e);
                         }
                     },
+                    findDatasetMeta(name) {
+                        if (!name) return null;
+                        return (
+                            this.datasets.find(
+                                (ds) => ds?.name === name || ds?.dataset === name,
+                            ) || null
+                        );
+                    },
+                    parseISODate(value) {
+                        if (!value) return null;
+                        const parts = value.split('-').map(Number);
+                        if (parts.length !== 3 || parts.some((part) => Number.isNaN(part))) {
+                            return null;
+                        }
+                        const [year, month, day] = parts;
+                        return new Date(Date.UTC(year, month - 1, day));
+                    },
+                    formatISODate(date) {
+                        return date.toISOString().slice(0, 10);
+                    },
+                    computeAutoSegments(startStr, endStr) {
+                        const startDate = this.parseISODate(startStr);
+                        const endDate = this.parseISODate(endStr);
+                        if (!startDate || !endDate || startDate > endDate) {
+                            return null;
+                        }
+
+                        const dates = [];
+                        for (
+                            let dt = new Date(startDate);
+                            dt <= endDate;
+                            dt.setUTCDate(dt.getUTCDate() + 1)
+                        ) {
+                            dates.push(this.formatISODate(new Date(dt)));
+                        }
+
+                        if (dates.length < 3) {
+                            return null;
+                        }
+
+                        let trainEndIdx = Math.max(0, Math.floor(dates.length * 0.7) - 1);
+                        let validEndIdx = Math.max(trainEndIdx + 1, Math.floor(dates.length * 0.85) - 1);
+
+                        if (validEndIdx >= dates.length - 1) {
+                            validEndIdx = dates.length - 2;
+                        }
+                        if (trainEndIdx >= validEndIdx) {
+                            trainEndIdx = Math.max(0, validEndIdx - 1);
+                        }
+
+                        return {
+                            train: [dates[0], dates[trainEndIdx]],
+                            valid: [dates[trainEndIdx + 1], dates[validEndIdx]],
+                            test: [dates[validEndIdx + 1], dates[dates.length - 1]],
+                        };
+                    },
+                    prefillSegmentsFromDataset(datasetName) {
+                        const meta = this.findDatasetMeta(datasetName);
+                        if (!meta || !meta.start_date || !meta.end_date) {
+                            return;
+                        }
+
+                        const segments = this.computeAutoSegments(meta.start_date, meta.end_date);
+                        if (!segments) {
+                            return;
+                        }
+
+                        this.forms.train.segments = {
+                            train_start: segments.train[0],
+                            train_end: segments.train[1],
+                            valid_start: segments.valid[0],
+                            valid_end: segments.valid[1],
+                            test_start: segments.test[0],
+                            test_end: segments.test[1],
+                        };
+                    },
+                    prefillBacktestPeriod(datasetName) {
+                        const meta = this.findDatasetMeta(datasetName);
+                        if (!meta) {
+                            return;
+                        }
+
+                        if (meta.start_date) {
+                            this.forms.backtest.start_date = meta.start_date;
+                        }
+                        if (meta.end_date) {
+                            this.forms.backtest.end_date = meta.end_date;
+                        }
+                        if (meta.benchmark) {
+                            this.forms.backtest.benchmark = meta.benchmark;
+                        }
+                    },
+                    handleTrainDatasetChange() {
+                        this.prefillSegmentsFromDataset(this.forms.train.dataset);
+                    },
+                    handleBacktestDatasetChange() {
+                        this.prefillBacktestPeriod(this.forms.backtest.dataset);
+                    },
+                    buildSegmentsPayload() {
+                        const s = this.forms.train.segments;
+                        const fields = [
+                            'train_start',
+                            'train_end',
+                            'valid_start',
+                            'valid_end',
+                            'test_start',
+                            'test_end',
+                        ];
+                        const hasAll = fields.every((field) => s[field]);
+                        if (!hasAll) {
+                            return null;
+                        }
+
+                        return {
+                            train: [s.train_start, s.train_end],
+                            valid: [s.valid_start, s.valid_end],
+                            test: [s.test_start, s.test_end],
+                        };
+                    },
                     async loadDatasets() {
                         try {
                             const res = await fetch("/api/datasets");
                             const data = await res.json();
                             this.datasets = data.datasets || [];
+                            if (this.forms.train.dataset) {
+                                this.prefillSegmentsFromDataset(this.forms.train.dataset);
+                            }
+                            if (this.forms.backtest.dataset) {
+                                this.prefillBacktestPeriod(this.forms.backtest.dataset);
+                            }
                         } catch (e) {
                             console.error("Failed to load datasets:", e);
                         }
@@ -1298,11 +3242,16 @@
                                 headers: { "Content-Type": "application/json" },
                                 body: JSON.stringify(data),
                             });
+
+                            // Check HTTP status
+                            if (!res.ok) {
+                                throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+                            }
+
                             const result = await res.json();
 
-                            // If a process_id is returned, start monitoring it
+                            // If a process_id is returned, note it (no need for per-process WebSocket)
                             if (result.process_id) {
-                                this.monitorProcess(result.process_id);
                                 this.addActivity(`Started ${formKey} (${result.process_id})`, "info");
                             }
 
@@ -1371,27 +3320,56 @@
                         }
                     },
                     async trainModel() {
+                        // Mark form as submitted for validation
+                        this.formSubmitAttempted.train = true;
+
+                        // Validate required fields
+                        if (!this.forms.train.dataset) {
+                            this.showToast('error', 'Please select a dataset before training', 3000);
+                            this.statusAnnouncement = 'Validation error: Please select a dataset';
+                            return;
+                        }
+
+                        const payload = {
+                            dataset: this.forms.train.dataset,
+                            feature_handler: this.forms.train.feature_handler,
+                            model_handler: this.forms.train.model_handler,
+                        };
+
+                        const segmentsPayload = this.buildSegmentsPayload();
+                        if (segmentsPayload) {
+                            payload.segments = segmentsPayload;
+                        }
+
                         await this.callAPI(
                             "/api/models/train",
-                            {
-                                dataset: this.forms.train.dataset,
-                                feature_handler:
-                                    this.forms.train.feature_handler,
-                                model_handler: this.forms.train.model_handler,
-                            },
+                            payload,
                             "train",
                         );
                         setTimeout(() => this.loadModels(), 2000);
                     },
                     async runBacktest() {
+                        const payload = {
+                            model_id: this.forms.backtest.model_id,
+                            dataset: this.forms.backtest.dataset,
+                            costs: this.forms.backtest.costs,
+                            rebalance: this.forms.backtest.rebalance,
+                            funding: this.forms.backtest.funding,
+                        };
+
+                        if (this.forms.backtest.start_date) {
+                            payload.start_date = this.forms.backtest.start_date;
+                        }
+                        if (this.forms.backtest.end_date) {
+                            payload.end_date = this.forms.backtest.end_date;
+                        }
+                        if (this.forms.backtest.benchmark) {
+                            payload.benchmark = this.forms.backtest.benchmark;
+                        }
+
                         await this.callAPI(
                             "/api/backtests/run",
-                            {
-                                model_id: this.forms.backtest.model_id,
-                                dataset: this.forms.backtest.dataset,
-                                costs: this.forms.backtest.costs,
-                                rebalance: this.forms.backtest.rebalance,
-                            },
+                            payload,
                             "backtest",
                         );
                     },
@@ -1408,30 +3386,6 @@
                     formatTime(timestamp) {
                         return new Date(timestamp).toLocaleTimeString();
                     },
-                    connectProcessWebSocket() {
-                        const protocol =
-                            window.location.protocol === "https:"
-                                ? "wss:"
-                                : "ws:";
-                        const wsUrl = `${protocol}//${window.location.host}/ws/processes`;
-                        this.processWs = new WebSocket(wsUrl);
-
-                        this.processWs.onopen = () => {
-                            console.log("Process WebSocket connected");
-                        };
-
-                        this.processWs.onclose = () => {
-                            console.log("Process WebSocket disconnected, reconnecting...");
-                            setTimeout(() => this.connectProcessWebSocket(), 3000);
-                        };
-
-                        this.processWs.onmessage = (event) => {
-                            const data = JSON.parse(event.data);
-                            if (data.type === "process_update") {
-                                this.processes = data.processes || [];
-                            }
-                        };
-                    },
                     async loadProcesses() {
                         try {
                             const res = await fetch("/api/processes");
@@ -1443,20 +3397,142 @@
                     },
                     toggleProcessLogs(processId) {
                         this.expandedProcesses[processId] = !this.expandedProcesses[processId];
+
+                        if (this.expandedProcesses[processId]) {
+                            // Enable auto-scroll when opening logs
+                            this.autoScrollEnabled[processId] = true;
+                            this.showScrollButton[processId] = false;
+
+                            // Scroll to bottom after DOM updates
+                            this.$nextTick(() => {
+                                this.scrollLogsToBottom(processId);
+                            });
+                        }
+
                         this.$forceUpdate();
                     },
-                    async cancelProcess(processId) {
-                        if (!confirm(`Cancel process ${processId}?`)) return;
 
-                        try {
-                            const res = await fetch(`/api/processes/${processId}`, {
-                                method: "DELETE",
-                            });
-                            const result = await res.json();
-                            this.addActivity(`Process ${processId} cancelled`, "warning");
-                        } catch (error) {
-                            this.addActivity(`Failed to cancel ${processId}: ${error.message}`, "error");
+                    handleLogScroll(processId, event) {
+                        const element = event.target;
+                        const isAtBottom = element.scrollHeight - element.scrollTop <= element.clientHeight + 5;
+
+                        // Show/hide scroll button based on position
+                        this.showScrollButton[processId] = !isAtBottom;
+
+                        // Disable auto-scroll if user scrolled up manually
+                        if (!isAtBottom) {
+                            this.autoScrollEnabled[processId] = false;
+                        } else {
+                            this.autoScrollEnabled[processId] = true;
                         }
+
+                        this.$forceUpdate();
+                    },
+
+                    scrollLogsToBottom(processId) {
+                        // Better null checking to prevent runtime errors
+                        try {
+                            const logElement = this.$refs['logs-' + processId];
+                            if (logElement && Array.isArray(logElement) && logElement[0]) {
+                                const element = logElement[0];
+                                if (element && typeof element.scrollTop !== 'undefined' && typeof element.scrollHeight !== 'undefined') {
+                                    element.scrollTop = element.scrollHeight;
+                                    this.autoScrollEnabled[processId] = true;
+                                    this.showScrollButton[processId] = false;
+                                    this.$forceUpdate();
+                                }
+                            }
+                        } catch (error) {
+                            console.error('Error scrolling logs:', error);
+                        }
+                    },
+                    showConfirmModal(title, message, onConfirm, onCancel = () => {}) {
+                        this.modal = {
+                            show: true,
+                            id: this.toastIdCounter++,
+                            title,
+                            message,
+                            confirmText: 'Confirm',
+                            cancelText: 'Cancel',
+                            onConfirm,
+                            onCancel
+                        };
+
+                        // Focus trap: focus the cancel button when modal opens
+                        this.$nextTick(() => {
+                            const cancelBtn = this.$refs.modalCancelBtn;
+                            if (cancelBtn && Array.isArray(cancelBtn) && cancelBtn[0]) {
+                                cancelBtn[0].focus();
+                            }
+                        });
+                    },
+
+                    async cancelProcess(processId) {
+                        // Prevent double-clicks
+                        if (this.cancellingProcesses[processId]) return;
+
+                        // Use accessible modal instead of native confirm
+                        this.showConfirmModal(
+                            'Cancel Process',
+                            `Are you sure you want to cancel process ${processId}? This action cannot be undone.`,
+                            async () => {
+                                // Store original process state for rollback
+                                const processIndex = this.processes.findIndex(p => p.process_id === processId);
+                                const originalProcess = processIndex >= 0 ? JSON.parse(JSON.stringify(this.processes[processIndex])) : null;
+
+                                // Increment state version to prevent race conditions
+                                if (!this.processStateVersions[processId]) {
+                                    this.processStateVersions[processId] = 0;
+                                }
+                                const currentVersion = ++this.processStateVersions[processId];
+
+                                try {
+                                    // 1. Show loading spinner immediately (optimistic UI)
+                                    this.cancellingProcesses[processId] = true;
+                                    this.$forceUpdate();
+
+                                    // 2. Make cancellation request
+                                    const res = await fetch(`/api/processes/${processId}`, {
+                                        method: "DELETE",
+                                    });
+
+                                    if (!res.ok) {
+                                        throw new Error(`Server returned ${res.status}: ${res.statusText}`);
+                                    }
+
+                                    const result = await res.json();
+
+                                    // 3. Only update if this is still the latest version (no newer updates came via WebSocket)
+                                    if (this.processStateVersions[processId] === currentVersion && processIndex >= 0) {
+                                        this.processes[processIndex].status = 'cancelling';
+                                        this.$forceUpdate();
+                                    }
+
+                                    this.addActivity(`Process ${processId} cancelled`, "warning");
+                                    this.showToast('success', `Process ${processId} cancelled successfully`, 3000);
+
+                                    // Remove cancelling state after a short delay
+                                    setTimeout(() => {
+                                        delete this.cancellingProcesses[processId];
+                                        this.$forceUpdate();
+                                    }, 1000);
+
+                                } catch (error) {
+                                    // 4. Error - rollback to original state only if no newer updates
+                                    console.error('Cancel process error:', error);
+
+                                    if (this.processStateVersions[processId] === currentVersion && originalProcess && processIndex >= 0) {
+                                        this.processes[processIndex] = originalProcess;
+                                    }
+
+                                    delete this.cancellingProcesses[processId];
+                                    this.$forceUpdate();
+
+                                    this.addActivity(`Failed to cancel ${processId}: ${error.message}`, "error");
+                                    this.showToast('error', `Failed to cancel process: ${error.message}`, 5000);
+                                }
+                            }
+                        );
                     },
                     formatDuration(process) {
                         if (!process.metrics.start_time) return "N/A";
@@ -1482,57 +3558,20 @@
                         const date = new Date(timestamp);
                         return date.toLocaleTimeString();
                     },
-                    monitorProcess(processId) {
-                        // Connect to process-specific WebSocket for real-time updates
-                        const protocol =
-                            window.location.protocol === "https:"
-                                ? "wss:"
-                                : "ws:";
-                        const wsUrl = `${protocol}//${window.location.host}/ws/processes/${processId}`;
-                        const ws = new WebSocket(wsUrl);
+                    formatETA(seconds) {
+                        if (!seconds || seconds < 0) return "Calculating...";
 
-                        ws.onmessage = (event) => {
-                            const data = JSON.parse(event.data);
-                            if (data.type === "process_update") {
-                                // Update the specific process in the list
-                                const index = this.processes.findIndex(
-                                    (p) => p.process_id === processId
-                                );
-                                if (index >= 0) {
-                                    this.processes[index] = data.data;
-                                    this.$forceUpdate();
-                                } else {
-                                    this.processes.unshift(data.data);
-                                }
-                            } else if (data.type === "process_complete") {
-                                // Final update, then close
-                                const index = this.processes.findIndex(
-                                    (p) => p.process_id === processId
-                                );
-                                if (index >= 0) {
-                                    this.processes[index] = data.data;
-                                }
-                                ws.close();
-                                delete this.processWebSockets[processId];
-                            }
-                        };
+                        const hours = Math.floor(seconds / 3600);
+                        const minutes = Math.floor((seconds % 3600) / 60);
+                        const secs = Math.floor(seconds % 60);
 
-                        ws.onclose = () => {
-                            delete this.processWebSockets[processId];
-                            // Check if process was still running when connection closed
-                            const process = this.processes.find(p => p.process_id === processId);
-                            if (process && process.status === "running") {
-                                this.addActivity(`Lost connection to process ${processId}`, "warning");
-                            }
-                        };
-
-                        ws.onerror = (error) => {
-                            console.error(`WebSocket error for ${processId}:`, error);
-                            delete this.processWebSockets[processId];
-                            this.addActivity(`Connection error for process ${processId}`, "error");
-                        };
-
-                        this.processWebSockets[processId] = ws;
+                        if (hours > 0) {
+                            return `${hours}h ${minutes}m remaining`;
+                        } else if (minutes > 0) {
+                            return `${minutes}m ${secs}s remaining`;
+                        } else {
+                            return `${secs}s remaining`;
+                        }
                     },
                 },
             }).mount("#app");

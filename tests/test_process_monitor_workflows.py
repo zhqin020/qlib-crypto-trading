@@ -14,6 +14,26 @@ import pytest
 import asyncio
 from pathlib import Path
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
+import pandas as pd
+
+
+DEFAULT_SEGMENTS = {
+    "train": ("2023-01-01", "2023-01-31"),
+    "valid": ("2023-02-01", "2023-02-15"),
+    "test": ("2023-02-16", "2023-02-28"),
+}
+
+
+class AsyncNullContext:
+    def __init__(self, should_fail: bool = False):
+        self.should_fail = should_fail
+
+    async def __aenter__(self):
+        if self.should_fail:
+            raise RuntimeError("Failed to initialize qlib")
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
 from src.monitoring.process_monitor import monitor, ProcessStatus
 
 
@@ -29,7 +49,7 @@ async def cleanup_monitor():
 class TestTrainerWorkflowMonitoring:
     """Test ProcessMonitor integration with trainer.py"""
 
-    @patch('src.models.trainer.init_qlib_clean_async')
+    @patch('src.models.trainer.qlib_init_context')
     @patch('src.models.trainer.init_instance_by_config')
     @patch('src.models.trainer.R')
     async def test_successful_training_creates_process(
@@ -41,13 +61,16 @@ class TestTrainerWorkflowMonitoring:
         """Test that successful training creates and completes a process"""
         from src.models.trainer import train_model
 
+        mock_init_qlib.return_value = AsyncNullContext()
+
         # Setup mocks
-        mock_init_qlib.return_value = True
 
         # Mock model
         mock_model = Mock()
         mock_model.fit = Mock()
-        mock_model.predict = Mock(return_value=[0.1, 0.2, 0.3])
+        mock_model.predict = Mock(
+            return_value=pd.Series([0.1, 0.2, 0.3], index=['BTC', 'ETH', 'SOL'])
+        )
 
         # Mock dataset
         mock_dataset = Mock()
@@ -82,7 +105,8 @@ class TestTrainerWorkflowMonitoring:
             dataset_ref="test_dataset",
             feature_set_ref="alpha158_crypto",
             handler="lightgbm",
-            params={}
+            params={},
+            segments=DEFAULT_SEGMENTS,
         )
 
         # Verify process was tracked
@@ -110,13 +134,13 @@ class TestTrainerWorkflowMonitoring:
         import shutil
         shutil.rmtree(qlib_dir.parent.parent, ignore_errors=True)
 
-    @patch('src.models.trainer.init_qlib_clean_async')
+    @patch('src.models.trainer.qlib_init_context')
     async def test_training_failure_marks_process_failed(self, mock_init_qlib):
         """Test that training failure marks process as FAILED"""
         from src.models.trainer import train_model
 
         # Setup mock to fail
-        mock_init_qlib.return_value = False
+        mock_init_qlib.return_value = AsyncNullContext(should_fail=True)
 
         # Create mock directories
         project_root = Path(__file__).parent.parent
@@ -128,7 +152,8 @@ class TestTrainerWorkflowMonitoring:
         result = await train_model(
             dataset_ref="fail_dataset",
             feature_set_ref="alpha158_crypto",
-            handler="lightgbm"
+            handler="lightgbm",
+            segments=DEFAULT_SEGMENTS,
         )
 
         # Verify process failed
@@ -145,12 +170,12 @@ class TestTrainerWorkflowMonitoring:
         import shutil
         shutil.rmtree(qlib_dir.parent.parent, ignore_errors=True)
 
-    @patch('src.models.trainer.init_qlib_clean_async')
+    @patch('src.models.trainer.qlib_init_context')
     async def test_training_progress_updates(self, mock_init_qlib):
         """Test that training sends progress updates at expected points"""
         from src.models.trainer import train_model
 
-        mock_init_qlib.return_value = True
+        mock_init_qlib.return_value = AsyncNullContext()
 
         # Create mock directories
         project_root = Path(__file__).parent.parent
@@ -164,7 +189,8 @@ class TestTrainerWorkflowMonitoring:
             await train_model(
                 dataset_ref="progress_dataset",
                 feature_set_ref="alpha158_crypto",
-                handler="lightgbm"
+                handler="lightgbm",
+                segments=DEFAULT_SEGMENTS,
             )
         except:
             pass
@@ -193,7 +219,7 @@ class TestTrainerWorkflowMonitoring:
 class TestBacktestWorkflowMonitoring:
     """Test ProcessMonitor integration with engine.py"""
 
-    @patch('src.backtesting.engine.init_qlib_clean_async')
+    @patch('src.backtesting.engine.qlib_init_context')
     @patch('src.backtesting.engine.qlib_backtest')
     @patch('src.backtesting.engine.pickle.load')
     async def test_successful_backtest_creates_process(
@@ -206,7 +232,7 @@ class TestBacktestWorkflowMonitoring:
         from src.backtesting.engine import run_backtest
 
         # Setup mocks
-        mock_init_qlib.return_value = True
+        mock_init_qlib.return_value = AsyncNullContext()
         mock_model = Mock()
         mock_pickle_load.return_value = mock_model
 
@@ -240,7 +266,10 @@ class TestBacktestWorkflowMonitoring:
             model_id="test_model_123",
             dataset_ref="backtest_dataset",
             costs="medium",
-            rebalance="weekly"
+            rebalance="weekly",
+            start_time="2023-01-01",
+            end_time="2024-12-31",
+            benchmark="BTC_USDT",
         )
 
         # Verify process was tracked
@@ -266,13 +295,13 @@ class TestBacktestWorkflowMonitoring:
         shutil.rmtree(qlib_dir.parent.parent, ignore_errors=True)
         shutil.rmtree(models_dir.parent, ignore_errors=True)
 
-    @patch('src.backtesting.engine.init_qlib_clean_async')
+    @patch('src.backtesting.engine.qlib_init_context')
     async def test_backtest_failure_marks_process_failed(self, mock_init_qlib):
         """Test that backtest failure marks process as FAILED"""
         from src.backtesting.engine import run_backtest
 
         # Setup mock to fail
-        mock_init_qlib.return_value = False
+        mock_init_qlib.return_value = AsyncNullContext(should_fail=True)
 
         # Create mock directories
         project_root = Path(__file__).parent.parent
@@ -285,7 +314,10 @@ class TestBacktestWorkflowMonitoring:
             model_id="nonexistent_model",
             dataset_ref="fail_backtest",
             costs="medium",
-            rebalance="weekly"
+            rebalance="weekly",
+            start_time="2023-01-01",
+            end_time="2023-06-30",
+            benchmark="BTC_USDT",
         )
 
         # Verify process failed
@@ -306,7 +338,7 @@ class TestBacktestWorkflowMonitoring:
 class TestPredictorWorkflowMonitoring:
     """Test ProcessMonitor integration with predictor.py"""
 
-    @patch('src.serving.predictor.init_qlib_clean_async')
+    @patch('src.serving.predictor.qlib_init_context')
     @patch('src.serving.predictor.init_instance_by_config')
     @patch('src.serving.predictor.pickle.load')
     async def test_successful_prediction_creates_process(
@@ -320,7 +352,7 @@ class TestPredictorWorkflowMonitoring:
         import pandas as pd
 
         # Setup mocks
-        mock_init_qlib.return_value = True
+        mock_init_qlib.return_value = AsyncNullContext()
 
         # Mock model
         mock_model = Mock()
@@ -440,8 +472,8 @@ class TestSnapshotWorkflowMonitoring:
 class TestConcurrentWorkflows:
     """Test multiple workflows running concurrently with ProcessMonitor"""
 
-    @patch('src.models.trainer.init_qlib_clean_async')
-    @patch('src.backtesting.engine.init_qlib_clean_async')
+    @patch('src.models.trainer.qlib_init_context')
+    @patch('src.backtesting.engine.qlib_init_context')
     async def test_concurrent_training_and_backtest(
         self,
         mock_backtest_init,
@@ -452,8 +484,8 @@ class TestConcurrentWorkflows:
         from src.backtesting.engine import run_backtest
 
         # Both will fail due to missing setup, but we can verify process tracking
-        mock_training_init.return_value = False
-        mock_backtest_init.return_value = False
+        mock_training_init.return_value = AsyncNullContext(should_fail=True)
+        mock_backtest_init.return_value = AsyncNullContext(should_fail=True)
 
         # Create mock directories
         project_root = Path(__file__).parent.parent
@@ -464,8 +496,21 @@ class TestConcurrentWorkflows:
 
         # Run concurrently
         results = await asyncio.gather(
-            train_model("concurrent_train", "alpha158_crypto", "lightgbm"),
-            run_backtest("test_model", "concurrent_backtest", "medium", "weekly"),
+            train_model(
+                dataset_ref="concurrent_train",
+                feature_set_ref="alpha158_crypto",
+                handler="lightgbm",
+                segments=DEFAULT_SEGMENTS,
+            ),
+            run_backtest(
+                model_id="test_model",
+                dataset_ref="concurrent_backtest",
+                costs="medium",
+                rebalance="weekly",
+                start_time="2023-01-01",
+                end_time="2023-06-30",
+                benchmark="BTC_USDT",
+            ),
             return_exceptions=True
         )
 
@@ -488,7 +533,7 @@ class TestConcurrentWorkflows:
 class TestProgressUpdateSequence:
     """Test that progress updates happen in correct sequence"""
 
-    @patch('src.models.trainer.init_qlib_clean_async')
+    @patch('src.models.trainer.qlib_init_context')
     @patch('src.models.trainer.init_instance_by_config')
     @patch('src.models.trainer.R')
     async def test_training_progress_sequence(
@@ -501,7 +546,7 @@ class TestProgressUpdateSequence:
         from src.models.trainer import train_model
 
         # Setup mocks
-        mock_init_qlib.return_value = True
+        mock_init_qlib.return_value = AsyncNullContext()
         mock_model = Mock()
         mock_model.fit = Mock()
         mock_model.predict = Mock(return_value=[])
@@ -522,7 +567,12 @@ class TestProgressUpdateSequence:
 
         # Run training
         try:
-            await train_model("sequence_test", "alpha158_crypto", "lightgbm")
+            await train_model(
+                dataset_ref="sequence_test",
+                feature_set_ref="alpha158_crypto",
+                handler="lightgbm",
+                segments=DEFAULT_SEGMENTS,
+            )
         except:
             pass
 
@@ -552,7 +602,8 @@ class TestErrorHandlingInWorkflows:
         result = await train_model(
             dataset_ref="completely_nonexistent_dataset",
             feature_set_ref="alpha158_crypto",
-            handler="lightgbm"
+            handler="lightgbm",
+            segments=DEFAULT_SEGMENTS,
         )
 
         # Should return error
@@ -583,7 +634,10 @@ class TestErrorHandlingInWorkflows:
             model_id="completely_invalid_model_xyz",
             dataset_ref="error_test",
             costs="medium",
-            rebalance="weekly"
+            rebalance="weekly",
+            start_time="2023-01-01",
+            end_time="2023-06-30",
+            benchmark="BTC_USDT",
         )
 
         # Should return error

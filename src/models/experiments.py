@@ -67,7 +67,8 @@ async def run_recipe(
                 dataset_ref=dataset,
                 feature_set_ref=feature_set["name"],
                 handler=model_spec["handler"],
-                params=model_spec.get("params", {})
+                params=model_spec.get("params", {}),
+                segments=recipe_config.get("segments"),
             )
             models.append(model_result)
 
@@ -80,7 +81,10 @@ async def run_recipe(
                     dataset_ref=dataset,
                     costs=costs,
                     rebalance=rebalance,
-                    funding=False
+                    funding=recipe_config.get("funding", False),
+                    start_time=recipe_config.get("start_time"),
+                    end_time=recipe_config.get("end_time"),
+                    benchmark=recipe_config.get("benchmark"),
                 )
                 backtest_results.append(bt_result)
 

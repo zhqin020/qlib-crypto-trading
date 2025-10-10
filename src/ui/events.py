@@ -7,6 +7,7 @@ import json
 import logging
 from typing import Dict, Set, Any
 from datetime import datetime
+from collections import deque
 from fastapi import WebSocket
 
 logger = logging.getLogger(__name__)
@@ -17,19 +18,24 @@ class EventBroadcaster:
 
     def __init__(self):
         self.active_connections: Set[WebSocket] = set()
-        self.event_history: list = []
-        self.max_history = 100
+        self.event_history: deque = deque(maxlen=100)  # Auto-evicts oldest events
 
     async def connect(self, websocket: WebSocket):
         """Register new WebSocket connection"""
         await websocket.accept()
         self.active_connections.add(websocket)
 
-        # Send recent event history to new client
-        await websocket.send_json({
-            "type": "history",
-            "events": self.event_history[-20:]  # Last 20 events
-        })
+        # Send recent event history to new client (deque supports list conversion)
+        try:
+            await websocket.send_json({
+                "type": "history",
+                "events": list(self.event_history)[-20:]  # Last 20 events
+            })
+        except Exception as e:
+            logger.error(f"Failed to send event history to new client: {e}")
+            # Remove connection if send fails
+            self.active_connections.discard(websocket)
+            raise
 
         logger.info(f"New WebSocket client connected. Total: {len(self.active_connections)}")
 
@@ -39,21 +45,21 @@ class EventBroadcaster:
         logger.info(f"WebSocket client disconnected. Total: {len(self.active_connections)}")
 
     async def broadcast(self, event_type: str, data: Dict[str, Any]):
-        """Broadcast event to all connected clients"""
+        """Broadcast event to all connected clients with proper error handling"""
         event = {
             "type": event_type,
             "data": data,
             "timestamp": datetime.now().isoformat()
         }
 
-        # Add to history
+        # Add to history (deque auto-evicts oldest)
         self.event_history.append(event)
-        if len(self.event_history) > self.max_history:
-            self.event_history.pop(0)
 
-        # Broadcast to all clients
+        # Copy set to prevent RuntimeError during iteration
+        connections_snapshot = self.active_connections.copy()
         disconnected = set()
-        for connection in self.active_connections:
+
+        for connection in connections_snapshot:
             try:
                 await connection.send_json(event)
             except Exception as e:

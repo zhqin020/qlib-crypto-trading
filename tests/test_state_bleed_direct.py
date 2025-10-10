@@ -4,6 +4,10 @@ Direct test of the state bleed fix - tests the actual code paths that will be us
 import sys
 from pathlib import Path
 
+import pytest
+
+pytest.importorskip("qlib", reason="qlib not installed")
+
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "src"))
 

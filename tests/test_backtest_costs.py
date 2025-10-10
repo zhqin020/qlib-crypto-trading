@@ -125,7 +125,10 @@ class TestBacktestCostIntegration:
             dataset_ref=model_setup["dataset"],
             costs="low",
             rebalance="weekly",
-            funding=False
+            funding=False,
+            start_time="2023-01-01",
+            end_time="2023-12-31",
+            benchmark="BTC_USDT",
         )
 
         result_medium = await run_backtest(
@@ -133,7 +136,10 @@ class TestBacktestCostIntegration:
             dataset_ref=model_setup["dataset"],
             costs="medium",
             rebalance="weekly",
-            funding=False
+            funding=False,
+            start_time="2023-01-01",
+            end_time="2023-12-31",
+            benchmark="BTC_USDT",
         )
 
         result_high = await run_backtest(
@@ -141,7 +147,10 @@ class TestBacktestCostIntegration:
             dataset_ref=model_setup["dataset"],
             costs="high",
             rebalance="weekly",
-            funding=False
+            funding=False,
+            start_time="2023-01-01",
+            end_time="2023-12-31",
+            benchmark="BTC_USDT",
         )
 
         # Extract returns
@@ -174,7 +183,10 @@ class TestBacktestCostIntegration:
             dataset_ref=model_setup["dataset"],
             costs="medium",
             rebalance="weekly",
-            funding=False
+            funding=False,
+            start_time="2023-01-01",
+            end_time="2023-12-31",
+            benchmark="BTC_USDT",
         )
 
         # Check portfolio curve exists

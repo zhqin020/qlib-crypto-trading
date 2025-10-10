@@ -1,0 +1,98 @@
+{
+  "summary": {
+    "total": 9,
+    "passed": 6,
+    "failed": 0,
+    "warnings": 3,
+    "timestamp": "2025-10-07T15:06:43.942524"
+  },
+  "tests": [
+    {
+      "name": "GET /api/health",
+      "status": "PASS",
+      "details": "Response: {'status': 'healthy', 'service': 'qlib-crypto-platform', 'version': '2.0.0', 'websocket_clients': 0}",
+      "timestamp": "2025-10-07T15:06:43.883839"
+    },
+    {
+      "name": "GET /api/processes",
+      "status": "PASS",
+      "details": "Found 0 processes",
+      "timestamp": "2025-10-07T15:06:43.889630"
+    },
+    {
+      "name": "GET /api/processes/running",
+      "status": "PASS",
+      "details": "All 0 processes are running",
+      "timestamp": "2025-10-07T15:06:43.895336"
+    },
+    {
+      "name": "GET /api/processes/{invalid_id} 404",
+      "status": "PASS",
+      "details": "Correctly returns 404 for nonexistent process",
+      "timestamp": "2025-10-07T15:06:43.903476"
+    },
+    {
+      "name": "GET /api/processes/{id}/logs",
+      "status": "WARNING",
+      "details": "No processes available to test logs",
+      "timestamp": "2025-10-07T15:06:43.909262"
+    },
+    {
+      "name": "DELETE non-running process returns 400",
+      "status": "WARNING",
+      "details": "No non-running processes to test",
+      "timestamp": "2025-10-07T15:06:43.914956"
+    },
+    {
+      "name": "WebSocket /ws/processes",
+      "status": "PASS",
+      "details": "Received process update with 0 processes",
+      "timestamp": "2025-10-07T15:06:43.934440"
+    },
+    {
+      "name": "WebSocket /ws/processes/{id}",
+      "status": "WARNING",
+      "details": "No processes to test",
+      "timestamp": "2025-10-07T15:06:43.940492"
+    },
+    {
+      "name": "WebSocket invalid process error",
+      "status": "PASS",
+      "details": "Correctly returns error: Process 'invalid_process_xyz' not found",
+      "timestamp": "2025-10-07T15:06:43.942294"
+    }
+  ],
+  "bugs": [
+    {
+      "severity": "LOW",
+      "description": "Process ID generation uses uuid.uuid4().hex[:8] which could theoretically collide",
+      "location": "trainer.py:37, engine.py:42, predictor.py:32",
+      "suggested_fix": "Use full UUID or add timestamp: f'{process_type}_{int(time.time()*1000)}_{uuid.uuid4().hex[:6]}'"
+    },
+    {
+      "severity": "MEDIUM",
+      "description": "ProcessInfo.logs list can grow unbounded in long-running processes",
+      "location": "process_monitor.py:210",
+      "suggested_fix": "Add max log limit: if len(self._processes[process_id].logs) > 1000: self._processes[process_id].logs.pop(0)"
+    },
+    {
+      "severity": "MEDIUM",
+      "description": "No automatic cleanup of old completed/failed processes - could cause memory leak",
+      "location": "process_monitor.py",
+      "suggested_fix": "Add periodic cleanup: async def cleanup_old_processes(max_age_hours=24)"
+    }
+  ],
+  "warnings": [
+    "WebSocket /ws/processes reconnection logic exists in frontend (line 1424-1425) but may not handle rapid disconnects",
+    "ProcessMonitor._lock lazy initialization could cause race condition in high-concurrency scenarios (line 99-103)",
+    "Dataset validation checks both 'calendars' AND 'instruments' exist (trainer.py:72, engine.py:78), but should be OR not AND"
+  ],
+  "performance": [
+    {
+      "metric": "WebSocket connection latency (ms)",
+      "value": 19.342899322509766,
+      "threshold": 500,
+      "pass": true
+    }
+  ]
+}

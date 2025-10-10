@@ -8,6 +8,12 @@ from typing import Dict, List, Any, Optional
 from pathlib import Path
 import json
 
+from .validation import (
+    validate_dataset_name,
+    validate_handler,
+    ValidationError
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -84,8 +90,31 @@ async def create_feature_set(
 
     Returns:
         Feature set metadata
+
+    Raises:
+        ValidationError: If input validation fails
     """
     try:
+        # Validate inputs
+        dataset_ref = validate_dataset_name(dataset_ref)
+        handler = validate_handler(handler)
+
+        # Validate params if provided
+        if params is not None and not isinstance(params, dict):
+            raise ValidationError("Parameters must be a dictionary")
+
+        # Validate processors if provided
+        if processors is not None:
+            if not isinstance(processors, list):
+                raise ValidationError("Processors must be a list")
+            if len(processors) > 50:
+                raise ValidationError("Too many processors (max 50)")
+            for processor in processors:
+                if not isinstance(processor, dict):
+                    raise ValidationError("Each processor must be a dictionary")
+
+        logger.info(f"Creating feature set: dataset={dataset_ref}, handler={handler}")
+
         project_root = Path(__file__).parent.parent.parent
         config_dir = project_root / "config" / "features"
         config_dir.mkdir(parents=True, exist_ok=True)
@@ -129,6 +158,9 @@ async def create_feature_set(
         logger.info(f"Feature set created: {feature_set['name']}")
         return feature_set
 
+    except ValidationError as e:
+        logger.error(f"Validation failed: {e}")
+        return {"error": f"Invalid input: {str(e)}", "dataset": dataset_ref}
     except Exception as e:
         logger.error(f"Error creating feature set: {e}", exc_info=True)
         return {"error": str(e), "dataset": dataset_ref}

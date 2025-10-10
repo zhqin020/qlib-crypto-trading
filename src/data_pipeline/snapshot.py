@@ -10,6 +10,30 @@ from datetime import datetime
 import uuid
 
 from ..monitoring.process_monitor import monitor, ProcessStatus
+from .validation import (
+    validate_dataset_name,
+    validate_date_range,
+    validate_calendar,
+    ValidationError
+)
+
+try:  # Optional dependency: qlib calendar utilities
+    from .crypto_calendar import generate_crypto_calendars as _generate_crypto_calendars
+except ImportError:  # pragma: no cover - executed when qlib is unavailable
+    _generate_crypto_calendars = None
+
+
+if _generate_crypto_calendars is not None:
+    generate_crypto_calendars = _generate_crypto_calendars
+else:
+    def generate_crypto_calendars(*args, **kwargs):  # type: ignore[override]
+        raise ModuleNotFoundError(
+            "Qlib calendar utilities are required to generate snapshot calendars."
+        )
+
+    generate_crypto_calendars._qlib_missing = True  # type: ignore[attr-defined]
+
+from .official_qlib_converter import convert_crypto_data_official
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +55,25 @@ async def create_snapshot(
 
     Returns:
         Snapshot metadata
+
+    Raises:
+        ValidationError: If input validation fails
     """
+    # Validate inputs FIRST before any processing
+    try:
+        dataset = validate_dataset_name(dataset)
+        calendar = validate_calendar(calendar)
+        start_dt, end_dt = validate_date_range(start, end)
+
+        # Convert back to strings for processing
+        start = start_dt.strftime("%Y-%m-%d")
+        end = end_dt.strftime("%Y-%m-%d")
+
+        logger.info(f"Creating snapshot: dataset={dataset}, calendar={calendar}, range={start} to {end}")
+    except ValidationError as e:
+        logger.error(f"Input validation failed: {e}")
+        return {"error": f"Invalid input: {str(e)}", "dataset": dataset}
+
     # Generate process ID with timestamp to prevent collisions
     import time
     process_id = f"download_{int(time.time() * 1000)}_{uuid.uuid4().hex[:6]}"
@@ -46,7 +88,6 @@ async def create_snapshot(
         process_started = True
 
         from .official_qlib_converter import convert_crypto_data_official
-        from .crypto_calendar import generate_crypto_calendars
 
         # Step 1: Initialize paths
         await monitor.update_progress(process_id, 20.0, f"Initializing snapshot for dataset '{dataset}'", 1)
