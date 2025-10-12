@@ -37,14 +37,6 @@ class AsyncNullContext:
 from src.monitoring.process_monitor import monitor, ProcessStatus
 
 
-@pytest.fixture(autouse=True)
-async def cleanup_monitor():
-    """Clean up monitor state between tests"""
-    monitor._processes = {}
-    yield
-    monitor._processes = {}
-
-
 @pytest.mark.asyncio
 class TestTrainerWorkflowMonitoring:
     """Test ProcessMonitor integration with trainer.py"""

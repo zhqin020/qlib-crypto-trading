@@ -355,13 +355,29 @@ class ProcessMonitor:
         return self._lock
 
     def _ensure_test_isolation(self):
-        """Clear shared state when pytest switches to a new test node."""
+        """Clear shared state when pytest switches to a new test node.
+
+        NOTE: This method extracts the test name without the phase (setup/call/teardown)
+        to avoid false positives where we think the test changed just because the
+        phase changed. This fixes most test isolation issues, but there may still be
+        edge cases in large test suites where processes are cleared unexpectedly.
+
+        See Issue #1 for details.
+        """
         test_marker = os.getenv("PYTEST_CURRENT_TEST")
-        if test_marker and getattr(self, "_current_test_marker", None) != test_marker:
+        if not test_marker:
+            return
+
+        # Extract test name without phase (setup/call/teardown)
+        # Format: "path/to/test.py::TestClass::test_method (phase)"
+        test_name = test_marker.rsplit(" (", 1)[0] if " (" in test_marker else test_marker
+
+        current_test = getattr(self, "_current_test_marker", None)
+        if current_test != test_name:
             self._processes.clear()
             self._cached_all_processes = []
             self._cache_timestamp = 0
-            self._current_test_marker = test_marker
+            self._current_test_marker = test_name
 
     async def _invalidate_cache(self):
         """Invalidate the all_processes cache"""
