@@ -47,7 +47,7 @@ async def test_run_data_refresh_success(monkeypatch, tmp_path):
         enabled=True,
         symbols=["BTC/USDT", "ETH/USDT"],
         interval="1d",
-        lookback_days=3,
+        lookback_days=7,
         frequency_minutes=60,
         provider="binance",
         dataset="crypto",
@@ -86,11 +86,14 @@ async def test_run_data_refresh_success(monkeypatch, tmp_path):
     )
 
     assert result["status"] == "ok"
-    assert result["start_date"] == "2025-01-07"
+    assert result["start_date"] == "2025-01-03"
     assert result["end_date"] == "2025-01-10"
     assert calls["download"]["symbols"] == ["BTC/USDT", "ETH/USDT"]
     assert calls["snapshot"]["dataset"] == "crypto"
     assert calls["snapshot"]["calendar"] == "crypto_1d"
+    assert result["kpi_evaluation"]["stage"] == "data_refresh"
+    assert result["kpi_evaluation"]["passed"] is True
+    assert result["refresh_ready"] is True
 
 
 @pytest.mark.asyncio
@@ -114,3 +117,5 @@ async def test_run_data_refresh_download_failure(tmp_path):
 
     assert result["status"] == "error"
     assert "download_failed" in result["error"]
+    assert result["kpi_evaluation"]["passed"] is False
+    assert result["refresh_ready"] is False

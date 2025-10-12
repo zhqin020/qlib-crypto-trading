@@ -1,0 +1,50 @@
+{
+  "data_refresh": {
+    "description": "Market data refresh quality targets",
+    "metrics": {
+      "download_success": {
+        "min": 1,
+        "description": "Download must succeed (1) or fail (0)"
+      },
+      "data_age_hours": {
+        "max": 48,
+        "description": "Data should not be older than 48 hours"
+      }
+    }
+  },
+  "model_training": {
+    "description": "Model training quality targets",
+    "metrics": {
+      "validation_ic": {
+        "min": 0.01,
+        "description": "Information coefficient on validation set"
+      },
+      "validation_icir": {
+        "min": 0.5,
+        "description": "IC information ratio on validation set"
+      }
+    }
+  },
+  "backtesting": {
+    "description": "Backtest performance targets",
+    "metrics": {
+      "sharpe_ratio": {
+        "min": 0.5,
+        "description": "Minimum acceptable Sharpe ratio"
+      },
+      "max_drawdown": {
+        "max": 0.3,
+        "description": "Maximum acceptable drawdown (30%)"
+      }
+    }
+  },
+  "prediction": {
+    "description": "Prediction quality targets",
+    "metrics": {
+      "coverage": {
+        "min": 0.8,
+        "description": "Minimum 80% of symbols should have predictions"
+      }
+    }
+  }
+}

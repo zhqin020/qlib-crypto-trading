@@ -13,6 +13,7 @@ import pandas as pd
 import numpy as np
 import uuid
 
+from ..analytics.investment_kpis import kpi_registry
 from ..monitoring.process_monitor import monitor, ProcessStatus
 from ..utils.datasets import load_snapshot_metadata
 from ..utils.qlib_state import qlib_init_context
@@ -302,6 +303,34 @@ async def run_backtest(
                     "status": "completed",
                     "completed_at": datetime.now().isoformat(),
                 }
+
+                evaluation = kpi_registry.record(
+                    "backtest",
+                    {
+                        "model_id": model_id,
+                        "dataset": dataset_ref,
+                        "benchmark": resolved_benchmark,
+                        "period": {
+                            "start": resolved_start_str,
+                            "end": resolved_end_str,
+                        },
+                    },
+                    result["metrics"],
+                )
+
+                result["kpi_evaluation"] = evaluation.to_dict()
+                result["deployment_ready"] = evaluation.passed
+
+                log_level = "INFO" if evaluation.passed else "WARNING"
+                if evaluation.breaches:
+                    breach_summary = ", ".join(
+                        f"{b['metric']}->{b.get('actual')}" for b in evaluation.breaches
+                    )
+                    message = f"Investment KPI check failed: {breach_summary}"
+                else:
+                    message = "Investment KPI check passed"
+
+                await monitor.add_log(process_id, log_level, message)
 
             # Step 7: Save results
             await monitor.update_progress(process_id, 95.0, f"Saving backtest results", 7)

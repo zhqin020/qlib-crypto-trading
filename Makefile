@@ -28,6 +28,14 @@ help:
 	@echo "Testing:"
 	@echo "  make test           Run test suite"
 	@echo "  make test-cov       Run tests with coverage"
+	@echo "  make test-sharded   Run all test shards sequentially"
+	@echo "  make test-qlib      Run qlib-heavy tests (models, backtests)"
+	@echo "  make test-data      Run data pipeline tests"
+	@echo "  make test-monitor   Run process monitor tests"
+	@echo "  make test-api       Run API/WebSocket tests"
+	@echo "  make test-mcp       Run MCP tests"
+	@echo "  make test-e2e       Run integration/E2E tests"
+	@echo "  make test-misc      Run miscellaneous tests"
 	@echo ""
 	@echo "Maintenance:"
 	@echo "  make clean          Clean generated files"
@@ -78,6 +86,42 @@ test:
 
 test-cov:
 	pytest tests/ -v --cov=src --cov-report=html --cov-report=term
+
+# Sharded test execution to avoid CLI harness timeouts
+test-qlib:
+	@echo "Running qlib-heavy tests..."
+	SETUPTOOLS_SCM_PRETEND_VERSION=0.9.8 venv/bin/python -m pytest tests/test_backtest_costs.py tests/test_models.py tests/test_full_pipeline.py tests/test_qlib_debug.py tests/test_concurrent_qlib_init.py -v
+
+test-data:
+	@echo "Running data pipeline tests..."
+	SETUPTOOLS_SCM_PRETEND_VERSION=0.9.8 venv/bin/python -m pytest tests/test_data_pipeline.py tests/test_data_pipeline_validation.py tests/test_data_refresh.py tests/test_chunked_converter.py tests/test_investment_kpis.py -v
+
+test-monitor:
+	@echo "Running process monitor tests..."
+	SETUPTOOLS_SCM_PRETEND_VERSION=0.9.8 venv/bin/python -m pytest tests/test_process_monitor_api.py tests/test_process_monitor_comprehensive.py tests/test_process_monitor_edge_cases.py tests/test_process_monitor_integration.py tests/test_process_monitor_workflows.py tests/test_e2e_process_monitor.py -v
+
+test-api:
+	@echo "Running API/WebSocket tests..."
+	SETUPTOOLS_SCM_PRETEND_VERSION=0.9.8 venv/bin/python -m pytest tests/test_api_endpoints.py tests/test_api_validation.py tests/test_api.py tests/test_websocket_auth.py tests/test_websocket_edge_cases.py tests/test_websocket_ping_pong.py tests/test_websockets.py -v
+
+test-mcp:
+	@echo "Running MCP tests..."
+	@echo "Note: Excluding test_mcp_stdio.py, test_mcp_protocol.py, test_mcp_list_tools.py (manual test scripts, not pytest compatible)"
+	SETUPTOOLS_SCM_PRETEND_VERSION=0.9.8 venv/bin/python -m pytest tests/test_mcp_init.py tests/test_mcp_state_isolation.py -v
+
+test-e2e:
+	@echo "Running integration/E2E tests..."
+	SETUPTOOLS_SCM_PRETEND_VERSION=0.9.8 venv/bin/python -m pytest tests/test_e2e_workflows.py tests/test_e2e.py tests/test_integration_state_bleed.py tests/test_integration_workflows.py tests/test_state_bleed_direct.py tests/test_state_bleed_fix.py tests/test_state_persistence.py -v
+
+test-misc:
+	@echo "Running miscellaneous tests..."
+	SETUPTOOLS_SCM_PRETEND_VERSION=0.9.8 venv/bin/python -m pytest tests/test_device_management.py tests/test_path_traversal_security.py tests/test_performance_optimizations.py tests/test_task_cancellation_fix.py tests/test_ux_improvements.py tests/comprehensive_test.py -v
+
+test-sharded: test-data test-qlib test-monitor test-api test-mcp test-e2e test-misc
+	@echo ""
+	@echo "===================================="
+	@echo "All sharded tests completed!"
+	@echo "===================================="
 
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true

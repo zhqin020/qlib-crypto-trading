@@ -8,11 +8,12 @@ import json
 import os
 import pickle
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from datetime import datetime
 import pandas as pd
 import uuid
 
+from ..analytics.investment_kpis import kpi_registry
 from ..monitoring.process_monitor import monitor, ProcessStatus
 from ..utils.qlib_state import qlib_init_context
 from ..utils.datasets import load_snapshot_metadata
@@ -102,6 +103,7 @@ async def predict_today(model_id: str, dataset_ref: str) -> Dict[str, Any]:
                 }
 
             snapshot_meta = load_snapshot_metadata(qlib_dir)
+            data_staleness_hours: Optional[float] = None
             if snapshot_meta and MAX_DATA_STALENESS_HOURS > 0:
                 end_date_str = snapshot_meta.get("end_date")
                 if end_date_str:
@@ -111,6 +113,7 @@ async def predict_today(model_id: str, dataset_ref: str) -> Dict[str, Any]:
                         logger.warning("Snapshot metadata for %s has invalid end_date: %s", dataset_ref, end_date_str)
                     else:
                         staleness_hours = (datetime.now() - end_dt).total_seconds() / 3600
+                        data_staleness_hours = staleness_hours
                         if staleness_hours > MAX_DATA_STALENESS_HOURS:
                             message = (
                                 f"Dataset '{dataset_ref}' is stale (last date {end_date_str}). "
@@ -242,6 +245,41 @@ async def predict_today(model_id: str, dataset_ref: str) -> Dict[str, Any]:
                     "generated_at": datetime.now().isoformat(),
                     "status": "success"
                 }
+
+                coverage_ratio = 0.0
+                if len(pred_df) > 0:
+                    coverage_ratio = len(top_predictions) / float(len(pred_df))
+
+                prediction_metrics = {
+                    "data_staleness_hours": data_staleness_hours,
+                    "coverage_ratio": coverage_ratio,
+                    "total_symbols": len(pred_df),
+                }
+
+                evaluation = kpi_registry.record(
+                    "prediction",
+                    {
+                        "model_id": model_id,
+                        "dataset": dataset_ref,
+                        "prediction_date": today,
+                    },
+                    prediction_metrics,
+                )
+
+                result["kpi_metrics"] = prediction_metrics
+                result["kpi_evaluation"] = evaluation.to_dict()
+                result["deployment_ready"] = evaluation.passed
+
+                log_level = "INFO" if evaluation.passed else "WARNING"
+                if evaluation.breaches:
+                    breach_summary = ", ".join(
+                        f"{b['metric']}->{b.get('actual')}" for b in evaluation.breaches
+                    )
+                    message = f"Investment KPI check failed: {breach_summary}"
+                else:
+                    message = "Investment KPI check passed"
+
+                await monitor.add_log(process_id, log_level, message)
 
                 # Step 7: Save predictions
                 await monitor.update_progress(process_id, 95.0, f"Saving {len(top_predictions)} predictions", 7)

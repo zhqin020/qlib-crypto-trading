@@ -12,6 +12,7 @@ import uuid
 
 import pandas as pd
 
+from ..analytics.investment_kpis import kpi_registry
 from ..monitoring.process_monitor import monitor, ProcessStatus
 from ..utils.datasets import load_snapshot_metadata
 from ..utils.qlib_state import qlib_init_context
@@ -584,6 +585,32 @@ async def train_model(
                     "segments": resolved_segments,
                 }
 
+                training_kpis = _extract_training_kpis(recorder_info)
+                evaluation = kpi_registry.record(
+                    "training",
+                    {
+                        "model_id": model_id,
+                        "dataset": dataset_ref,
+                        "handler": handler,
+                    },
+                    training_kpis,
+                )
+
+                result["kpi_metrics"] = training_kpis
+                result["kpi_evaluation"] = evaluation.to_dict()
+                result["deployment_ready"] = evaluation.passed
+
+                log_level = "INFO" if evaluation.passed else "WARNING"
+                if evaluation.breaches:
+                    breach_summary = ", ".join(
+                        f"{b['metric']}->{b.get('actual')}" for b in evaluation.breaches
+                    )
+                    message = f"Investment KPI check failed: {breach_summary}"
+                else:
+                    message = "Investment KPI check passed"
+
+                await monitor.add_log(process_id, log_level, message)
+
                 # Save training metadata
                 meta_file = models_dir / f"{model_id}_meta.json"
                 with open(meta_file, 'w') as f:
@@ -634,6 +661,86 @@ async def train_model(
         return result
     except asyncio.CancelledError:
         return {"status": "cancelled", "process_id": process_id}
+
+
+def _extract_training_kpis(recorder_metrics: Any) -> Dict[str, Optional[float]]:
+    """Extract key training KPIs (ic, ic_ir, loss) from recorder output."""
+
+    targets = {"ic": None, "ic_ir": None, "loss": None}
+    preference = {"test": 3, "valid": 2, "validation": 2, "val": 2, "train": 1, None: 0}
+
+    def _label_from_entry(entry: Dict[str, Any]) -> Optional[str]:
+        for field in ("dataset", "step", "phase", "split"):
+            label = entry.get(field)
+            if isinstance(label, str):
+                return label.lower()
+        name = entry.get("name")
+        if isinstance(name, str):
+            lowered = name.lower()
+            if "valid" in lowered:
+                return "valid"
+            if "test" in lowered:
+                return "test"
+            if "train" in lowered:
+                return "train"
+        return None
+
+    def _try_record(metric: str, value: Any, label: Optional[str]) -> None:
+        if value is None:
+            return
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            return
+        current = targets.get(metric)
+        label_score = preference.get(label, 0)
+        if current is None:
+            targets[metric] = (numeric, label_score)
+        else:
+            _, current_score = current
+            if label_score >= current_score:
+                targets[metric] = (numeric, label_score)
+
+    def _maybe_check_entry(entry: Dict[str, Any]) -> None:
+        label = _label_from_entry(entry)
+        for key in ("name", "metric", "key"):
+            name = entry.get(key)
+            if not isinstance(name, str):
+                continue
+            lname = name.lower()
+            value = entry.get("value")
+            if value is None:
+                # some variants use result column names
+                value = entry.get("score")
+            if "ic_ir" in lname or "information coefficient ir" in lname:
+                _try_record("ic_ir", value, label)
+            elif "ic" in lname and "ic_ir" not in lname:
+                _try_record("ic", value, label)
+            elif "loss" in lname:
+                _try_record("loss", value, label)
+
+        # Some recorders expose dicts under "metrics"
+        if "metrics" in entry and isinstance(entry["metrics"], dict):
+            for metric_name, metric_value in entry["metrics"].items():
+                lowered = str(metric_name).lower()
+                if lowered == "ic" and metric_value is not None:
+                    _try_record("ic", metric_value, label)
+                elif lowered in {"ic_ir", "ic-ir"} and metric_value is not None:
+                    _try_record("ic_ir", metric_value, label)
+                elif lowered == "loss" and metric_value is not None:
+                    _try_record("loss", metric_value, label)
+
+    if isinstance(recorder_metrics, dict):
+        _maybe_check_entry(recorder_metrics)
+    elif isinstance(recorder_metrics, list):
+        for entry in recorder_metrics:
+            if isinstance(entry, dict):
+                _maybe_check_entry(entry)
+
+    return {
+        key: (value[0] if isinstance(value, tuple) else value)
+        for key, value in targets.items()
+    }
 
 
 def get_model_config(
