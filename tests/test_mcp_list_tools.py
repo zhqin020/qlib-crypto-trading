@@ -1,69 +1,39 @@
-#!/usr/bin/env python
-"""Test MCP server tools/list request"""
-import subprocess
-import json
-import time
+"""Test MCP server tools/list via direct API calls"""
+import pytest
+from src.mcp_server.server import list_tools
 
-# Start the MCP server
-proc = subprocess.Popen(
-    ["/Users/chadwyatt/Code/trading/qlib-2/scripts/start_mcp_server.sh"],
-    stdin=subprocess.PIPE,
-    stdout=subprocess.PIPE,
-    stderr=subprocess.PIPE,
-    text=True
-)
 
-# Initialize
-init_message = {
-    "jsonrpc": "2.0",
-    "id": 1,
-    "method": "initialize",
-    "params": {
-        "protocolVersion": "2024-11-05",
-        "capabilities": {},
-        "clientInfo": {"name": "test-client", "version": "1.0.0"}
-    }
-}
+@pytest.mark.asyncio
+async def test_tools_list_returns_data():
+    """Test that tools/list returns a non-empty list"""
+    tools = await list_tools()
 
-print("1. Initializing...")
-proc.stdin.write(json.dumps(init_message) + "\n")
-proc.stdin.flush()
-init_response = proc.stdout.readline()
-print(f"Init response: {init_response}")
+    assert isinstance(tools, list), "list_tools() should return a list"
+    assert len(tools) > 0, "Server should expose at least one tool"
 
-# Send initialized notification
-initialized_notification = {
-    "jsonrpc": "2.0",
-    "method": "notifications/initialized"
-}
-print("\n2. Sending initialized notification...")
-proc.stdin.write(json.dumps(initialized_notification) + "\n")
-proc.stdin.flush()
 
-# Request tools list
-tools_request = {
-    "jsonrpc": "2.0",
-    "id": 2,
-    "method": "tools/list"
-}
-print("\n3. Requesting tools list...")
-proc.stdin.write(json.dumps(tools_request) + "\n")
-proc.stdin.flush()
+@pytest.mark.asyncio
+async def test_tools_have_required_fields():
+    """Test that each tool has required name and description"""
+    tools = await list_tools()
 
-# Read response
-time.sleep(0.5)
-tools_response = proc.stdout.readline()
-print(f"\nTools response: {tools_response}")
+    for tool in tools:
+        assert hasattr(tool, 'name'), f"Tool {tool} missing 'name' attribute"
+        assert hasattr(tool, 'description'), f"Tool {tool} missing 'description' attribute"
+        assert isinstance(tool.name, str), f"Tool name should be string, got {type(tool.name)}"
+        assert len(tool.name) > 0, "Tool name should not be empty"
 
-if tools_response:
-    try:
-        data = json.loads(tools_response)
-        if "result" in data and "tools" in data["result"]:
-            print(f"\nFound {len(data['result']['tools'])} tools:")
-            for tool in data['result']['tools']:
-                print(f"  - {tool['name']}: {tool.get('description', 'N/A')}")
-    except Exception as e:
-        print(f"Error parsing: {e}")
 
-proc.terminate()
-proc.wait(timeout=1)
+@pytest.mark.asyncio
+async def test_tools_list_stability():
+    """Test that tools/list returns consistent results across calls"""
+    tools1 = await list_tools()
+    tools2 = await list_tools()
+
+    # Should return same number of tools
+    assert len(tools1) == len(tools2), "tools/list should return consistent results"
+
+    # Tool names should match
+    names1 = sorted([t.name for t in tools1])
+    names2 = sorted([t.name for t in tools2])
+    assert names1 == names2, "Tool names should be consistent across calls"

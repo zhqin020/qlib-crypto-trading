@@ -1,31 +1,48 @@
-#!/usr/bin/env python
 """Test MCP server protocol handshake"""
-import asyncio
-import json
-import sys
-from pathlib import Path
+import pytest
+from src.mcp_server.server import list_tools, list_resources
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from src.mcp_server.server import app
+@pytest.mark.asyncio
+async def test_list_tools():
+    """Test MCP server list_tools() method"""
+    tools = await list_tools()
 
-async def test_protocol():
-    """Test the MCP protocol handshake"""
+    # Verify tools were returned
+    assert len(tools) > 0, "Expected at least one tool from MCP server"
 
-    # Get tools
-    print("Testing list_tools()...")
-    tools = await app.list_tools()
-    print(f"\nFound {len(tools)} tools:")
+    # Verify tool structure
     for tool in tools:
-        print(f"  - {tool.name}: {tool.description}")
+        assert hasattr(tool, 'name'), "Tool missing 'name' attribute"
+        assert hasattr(tool, 'description'), "Tool missing 'description' attribute"
+        assert tool.name, "Tool name should not be empty"
 
-    # Get resources
-    print("\n\nTesting list_resources()...")
-    resources = await app.list_resources()
-    print(f"Found {len(resources)} resources:")
+
+@pytest.mark.asyncio
+async def test_list_resources():
+    """Test MCP server list_resources() method"""
+    resources = await list_resources()
+
+    # Verify resources were returned
+    assert isinstance(resources, list), "Expected list of resources"
+
+    # Verify resource structure if any exist
     for resource in resources:
-        print(f"  - {resource.uri}: {resource.name}")
+        assert hasattr(resource, 'uri'), "Resource missing 'uri' attribute"
+        assert hasattr(resource, 'name'), "Resource missing 'name' attribute"
 
-if __name__ == "__main__":
-    asyncio.run(test_protocol())
+
+@pytest.mark.asyncio
+async def test_protocol_integration():
+    """Test complete MCP protocol handshake"""
+    # Verify both tools and resources can be retrieved
+    tools = await list_tools()
+    resources = await list_resources()
+
+    assert len(tools) > 0, "Server should expose at least one tool"
+    assert isinstance(resources, list), "Resources should be a list"
+
+    # Log for debugging (only shown on failure or with -v)
+    print(f"\nMCP Server Status:")
+    print(f"  Tools: {len(tools)}")
+    print(f"  Resources: {len(resources)}")

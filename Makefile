@@ -106,8 +106,7 @@ test-api:
 
 test-mcp:
 	@echo "Running MCP tests..."
-	@echo "Note: Excluding test_mcp_stdio.py, test_mcp_protocol.py, test_mcp_list_tools.py (manual test scripts, not pytest compatible)"
-	SETUPTOOLS_SCM_PRETEND_VERSION=0.9.8 venv/bin/python -m pytest tests/test_mcp_init.py tests/test_mcp_state_isolation.py -v
+	SETUPTOOLS_SCM_PRETEND_VERSION=0.9.8 venv/bin/python -m pytest tests/test_mcp*.py -v
 
 test-e2e:
 	@echo "Running integration/E2E tests..."
