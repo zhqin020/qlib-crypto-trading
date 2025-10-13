@@ -94,3 +94,4 @@ postgres_data/
 
 # MLflow
 mlruns/
+/analytics/
