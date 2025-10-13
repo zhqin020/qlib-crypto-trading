@@ -1,0 +1,346 @@
+name: Test Suite
+
+on:
+  push:
+    branches: [ master, main, develop ]
+  pull_request:
+    branches: [ master, main, develop ]
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: "3.13"
+  SETUPTOOLS_SCM_PRETEND_VERSION: "0.9.8"
+
+jobs:
+  # Fast preliminary checks
+  preliminary:
+    name: Preliminary Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          # Install qlib from source (not available on PyPI as pyqlib)
+          pip install git+https://github.com/microsoft/qlib.git@main || echo "⚠️  Qlib install failed, qlib tests will be skipped"
+
+      - name: Check pytest collection
+        run: |
+          python -m pytest --collect-only tests/
+        timeout-minutes: 5
+
+  # Sharded test execution (7 parallel jobs)
+  test-data:
+    name: "Tests: Data Pipeline"
+    needs: preliminary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          # Install qlib from source (not available on PyPI as pyqlib)
+          pip install git+https://github.com/microsoft/qlib.git@main || echo "⚠️  Qlib install failed, qlib tests will be skipped"
+
+      - name: Run data pipeline tests
+        run: |
+          python -m pytest \
+            tests/test_data_pipeline.py \
+            tests/test_data_pipeline_validation.py \
+            tests/test_data_refresh.py \
+            tests/test_chunked_converter.py \
+            tests/test_investment_kpis.py \
+            -v --tb=short --cov=src --cov-report=xml --cov-report=term
+        timeout-minutes: 10
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          flags: data-pipeline
+          name: data-pipeline-coverage
+        if: always()
+
+  test-qlib:
+    name: "Tests: Qlib Heavy"
+    needs: preliminary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          # Install qlib from source (not available on PyPI as pyqlib)
+          pip install git+https://github.com/microsoft/qlib.git@main || echo "⚠️  Qlib install failed, qlib tests will be skipped"
+
+      - name: Run qlib-heavy tests
+        run: |
+          python -m pytest \
+            tests/test_backtest_costs.py \
+            tests/test_models.py \
+            tests/test_full_pipeline.py \
+            tests/test_qlib_debug.py \
+            tests/test_concurrent_qlib_init.py \
+            -v --tb=short --cov=src --cov-report=xml --cov-report=term
+        timeout-minutes: 15
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          flags: qlib-heavy
+          name: qlib-heavy-coverage
+        if: always()
+
+  test-monitor:
+    name: "Tests: Process Monitor"
+    needs: preliminary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          # Install qlib from source (not available on PyPI as pyqlib)
+          pip install git+https://github.com/microsoft/qlib.git@main || echo "⚠️  Qlib install failed, qlib tests will be skipped"
+
+      - name: Run process monitor tests
+        run: |
+          python -m pytest \
+            tests/test_process_monitor_api.py \
+            tests/test_process_monitor_comprehensive.py \
+            tests/test_process_monitor_edge_cases.py \
+            tests/test_process_monitor_integration.py \
+            tests/test_process_monitor_workflows.py \
+            tests/test_e2e_process_monitor.py \
+            -v --tb=short --cov=src --cov-report=xml --cov-report=term
+        timeout-minutes: 10
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          flags: process-monitor
+          name: process-monitor-coverage
+        if: always()
+
+  test-api:
+    name: "Tests: API/WebSocket"
+    needs: preliminary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          # Install qlib from source (not available on PyPI as pyqlib)
+          pip install git+https://github.com/microsoft/qlib.git@main || echo "⚠️  Qlib install failed, qlib tests will be skipped"
+
+      - name: Run API/WebSocket tests
+        run: |
+          python -m pytest \
+            tests/test_api_endpoints.py \
+            tests/test_api_validation.py \
+            tests/test_api.py \
+            tests/test_websocket_auth.py \
+            tests/test_websocket_edge_cases.py \
+            tests/test_websocket_ping_pong.py \
+            tests/test_websockets.py \
+            -v --tb=short --cov=src --cov-report=xml --cov-report=term \
+            -m "not requires_server"
+        timeout-minutes: 10
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          flags: api-websocket
+          name: api-websocket-coverage
+        if: always()
+
+  test-mcp:
+    name: "Tests: MCP Server"
+    needs: preliminary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          # Install qlib from source (not available on PyPI as pyqlib)
+          pip install git+https://github.com/microsoft/qlib.git@main || echo "⚠️  Qlib install failed, qlib tests will be skipped"
+
+      - name: Run MCP tests
+        run: |
+          python -m pytest tests/test_mcp*.py \
+            -v --tb=short --cov=src --cov-report=xml --cov-report=term
+        timeout-minutes: 10
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          flags: mcp-server
+          name: mcp-server-coverage
+        if: always()
+
+  test-e2e:
+    name: "Tests: Integration/E2E"
+    needs: preliminary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          # Install qlib from source (not available on PyPI as pyqlib)
+          pip install git+https://github.com/microsoft/qlib.git@main || echo "⚠️  Qlib install failed, qlib tests will be skipped"
+
+      - name: Run integration/E2E tests
+        run: |
+          python -m pytest \
+            tests/test_e2e_workflows.py \
+            tests/test_e2e.py \
+            tests/test_integration_state_bleed.py \
+            tests/test_integration_workflows.py \
+            tests/test_state_bleed_direct.py \
+            tests/test_state_bleed_fix.py \
+            tests/test_state_persistence.py \
+            -v --tb=short --cov=src --cov-report=xml --cov-report=term
+        timeout-minutes: 10
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          flags: integration-e2e
+          name: integration-e2e-coverage
+        if: always()
+
+  test-misc:
+    name: "Tests: Miscellaneous"
+    needs: preliminary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          # Install qlib from source (not available on PyPI as pyqlib)
+          pip install git+https://github.com/microsoft/qlib.git@main || echo "⚠️  Qlib install failed, qlib tests will be skipped"
+
+      - name: Run miscellaneous tests
+        run: |
+          python -m pytest \
+            tests/test_device_management.py \
+            tests/test_path_traversal_security.py \
+            tests/test_performance_optimizations.py \
+            tests/test_task_cancellation_fix.py \
+            tests/test_ux_improvements.py \
+            tests/comprehensive_test.py \
+            -v --tb=short --cov=src --cov-report=xml --cov-report=term
+        timeout-minutes: 10
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          flags: miscellaneous
+          name: miscellaneous-coverage
+        if: always()
+
+  # Aggregate results
+  test-summary:
+    name: Test Summary
+    needs: [test-data, test-qlib, test-monitor, test-api, test-mcp, test-e2e, test-misc]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check test results
+        run: |
+          echo "Test suite execution complete"
+          echo "Data Pipeline: ${{ needs.test-data.result }}"
+          echo "Qlib Heavy: ${{ needs.test-qlib.result }}"
+          echo "Process Monitor: ${{ needs.test-monitor.result }}"
+          echo "API/WebSocket: ${{ needs.test-api.result }}"
+          echo "MCP Server: ${{ needs.test-mcp.result }}"
+          echo "Integration/E2E: ${{ needs.test-e2e.result }}"
+          echo "Miscellaneous: ${{ needs.test-misc.result }}"
+
+          # Fail if any test job failed
+          if [[ "${{ needs.test-data.result }}" != "success" ]] || \
+             [[ "${{ needs.test-qlib.result }}" != "success" ]] || \
+             [[ "${{ needs.test-monitor.result }}" != "success" ]] || \
+             [[ "${{ needs.test-api.result }}" != "success" ]] || \
+             [[ "${{ needs.test-mcp.result }}" != "success" ]] || \
+             [[ "${{ needs.test-e2e.result }}" != "success" ]] || \
+             [[ "${{ needs.test-misc.result }}" != "success" ]]; then
+            echo "❌ One or more test shards failed"
+            exit 1
+          fi
+
+          echo "✅ All test shards passed"

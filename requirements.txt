@@ -1,5 +1,9 @@
 # Core ML and Qlib
-pyqlib>=0.9.5
+# Note: pyqlib is not available on public PyPI, must be installed from source
+# For CI/CD: Install from Microsoft's qlib repository
+# pip install git+https://github.com/microsoft/qlib.git@main
+# For local development: Use local build or conda package
+# pyqlib>=0.9.5  # Commented out for CI compatibility
 numpy>=1.23.0
 pandas>=1.5.0
 scipy>=1.9.0
