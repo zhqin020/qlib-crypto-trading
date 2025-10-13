@@ -26,16 +26,17 @@ help:
 	@echo "  make docker-down    Stop all Docker services"
 	@echo ""
 	@echo "Testing:"
-	@echo "  make test           Run test suite"
-	@echo "  make test-cov       Run tests with coverage"
-	@echo "  make test-sharded   Run all test shards sequentially"
-	@echo "  make test-qlib      Run qlib-heavy tests (models, backtests)"
-	@echo "  make test-data      Run data pipeline tests"
-	@echo "  make test-monitor   Run process monitor tests"
-	@echo "  make test-api       Run API/WebSocket tests"
-	@echo "  make test-mcp       Run MCP tests"
-	@echo "  make test-e2e       Run integration/E2E tests"
-	@echo "  make test-misc      Run miscellaneous tests"
+	@echo "  make test             Run test suite"
+	@echo "  make test-cov         Run tests with coverage"
+	@echo "  make test-parallel    Run all tests in parallel (pytest-xdist)"
+	@echo "  make test-sharded     Run all test shards sequentially"
+	@echo "  make test-qlib        Run qlib-heavy tests (models, backtests)"
+	@echo "  make test-data        Run data pipeline tests"
+	@echo "  make test-monitor     Run process monitor tests"
+	@echo "  make test-api         Run API/WebSocket tests"
+	@echo "  make test-mcp         Run MCP tests"
+	@echo "  make test-e2e         Run integration/E2E tests"
+	@echo "  make test-misc        Run miscellaneous tests"
 	@echo ""
 	@echo "Maintenance:"
 	@echo "  make clean          Clean generated files"
@@ -121,6 +122,16 @@ test-sharded: test-data test-qlib test-monitor test-api test-mcp test-e2e test-m
 	@echo "===================================="
 	@echo "All sharded tests completed!"
 	@echo "===================================="
+
+# Parallel test execution with pytest-xdist (Issue #4)
+test-parallel:
+	@echo "Running all tests in parallel with pytest-xdist..."
+	@echo "Using auto-detected CPU cores for worker processes"
+	SETUPTOOLS_SCM_PRETEND_VERSION=0.9.8 venv/bin/python -m pytest tests/ -n auto --dist loadscope -v
+
+test-parallel-fast:
+	@echo "Running all tests in parallel (max speed, loadfile distribution)..."
+	SETUPTOOLS_SCM_PRETEND_VERSION=0.9.8 venv/bin/python -m pytest tests/ -n auto --dist loadfile -v
 
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
