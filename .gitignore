@@ -30,7 +30,7 @@ env/
 .venv
 
 # IDEs
-.vscode/
+#.vscode/
 .idea/
 *.swp
 *.swo
@@ -95,3 +95,5 @@ postgres_data/
 # MLflow
 mlruns/
 /analytics/
+
+tmp/

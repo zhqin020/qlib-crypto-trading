@@ -1,0 +1,6 @@
+{
+
+    "editor.wordWrap": "on",
+    "python.terminal.activateEnvironment": true,
+    "python.defaultInterpreterPath": "~/miniconda3/envs/qlib/bin/python"
+}
