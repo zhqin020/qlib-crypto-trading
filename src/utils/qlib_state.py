@@ -130,6 +130,11 @@ async def qlib_init_context(
         )
         if not success:
             raise RuntimeError("Failed to initialize qlib")
+            
+        # Restore our project's logging configuration after qlib.init() which may reset it
+        from .logging_config import setup_logging
+        setup_logging()
+        
         logger.info("Qlib initialization complete; entering critical section")
         try:
             yield

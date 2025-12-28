@@ -13,6 +13,7 @@ from datetime import datetime
 import pandas as pd
 import numpy as np
 import uuid
+import warnings
 
 from analytics.investment_kpis import kpi_registry
 from monitoring.process_monitor import monitor, ProcessStatus
@@ -102,7 +103,7 @@ async def run_backtest(
 
     # Create the actual work as a separate coroutine
     async def do_backtest():
-        nonlocal process_started
+        nonlocal process_started, dataset_ref
         try:
             # Start process monitoring
             await monitor.start_process(process_id, "backtest", total_steps=total_steps)
@@ -117,6 +118,21 @@ async def run_backtest(
             models_dir = project_root / "models" / "trained"
             qlib_dir = project_root / "data" / "qlib" / dataset_ref
 
+            # Pre-load model metadata to resolve frequency correctly
+            model_meta_file = models_dir / f"{model_id}_meta.json"
+            if not model_meta_file.exists():
+                logger.warning(f"Metadata for model {model_id} not found at {model_meta_file}. Using defaults.")
+                model_meta = {}
+            else:
+                with open(model_meta_file) as f:
+                    model_meta = json.load(f)
+
+            # Check if we should automatically switch dataset based on model
+            if dataset_ref == "crypto" and model_meta.get("dataset") == "crypto_1h":
+                logger.info("Auto-switching to 'crypto_1h' dataset to match model training frequency.")
+                dataset_ref = "crypto_1h"
+                qlib_dir = project_root / "data" / "qlib" / dataset_ref
+
             # Step 1: Validate dataset
             await monitor.update_progress(process_id, 14.3, f"Validating dataset '{dataset_ref}'", 1)
 
@@ -128,7 +144,7 @@ async def run_backtest(
                     "error": f"Dataset '{dataset_ref}' not found at {qlib_dir}",
                     "status": "failed",
                     "dataset": dataset_ref,
-                    "model_id": model_id
+                    "model_id": model_id,
                 }
 
             # Validate dataset has required structure
@@ -139,7 +155,7 @@ async def run_backtest(
                     "error": f"Dataset '{dataset_ref}' appears to be empty or invalid",
                     "status": "failed",
                     "dataset": dataset_ref,
-                    "model_id": model_id
+                    "model_id": model_id,
                 }
 
             # Load dataset metadata for defaults (if available)
@@ -226,11 +242,6 @@ async def run_backtest(
                 with open(model_path, 'rb') as f:
                     model = pickle.load(f)
 
-                # Load model metadata
-                meta_file = models_dir / f"{model_id}_meta.json"
-                with open(meta_file) as f:
-                    model_meta = json.load(f)
-
                 # Step 4: Configure backtest
                 await monitor.update_progress(
                     process_id,
@@ -240,7 +251,7 @@ async def run_backtest(
                 )
 
                 # Resolve frequency for handler and exchange
-                dataset_freq = snapshot_meta.get("frequency", "1d")
+                dataset_freq = snapshot_meta.get("frequency", model_meta.get("dataset_freq", "1d"))
                 qlib_handler_freq = freq_map.get(dataset_freq, "day")
                 logger.info(f"Resolved dataset frequency: {dataset_freq} -> {qlib_handler_freq}")
 
@@ -297,15 +308,47 @@ async def run_backtest(
                         },
                     },
                 }
-
+                
+                # Use standardized dataset for progress reporting
+                await monitor.update_progress(process_id, 64.3, f"Generating predictions ({dataset_ref})", 4)
+                
                 prediction_dataset = await asyncio.to_thread(init_instance_by_config, prediction_dataset_config)
                 predictions = await asyncio.to_thread(model.predict, prediction_dataset)
                 
+                # Standardize Predictions: Force instrument names to UPPERCASE to match Exchange/all.txt
+                # This is CRITICAL because Qlib's Exchange is case-sensitive on Linux.
+                if not predictions.empty:
+                    try:
+                        # Standardize index names and force uppercase on 'instrument' level
+                        # Note: predictions can be a Series or DataFrame
+                        idx = predictions.index
+                        if isinstance(idx, pd.MultiIndex):
+                            name_list = [n.lower() if n else "" for n in idx.names]
+                            if 'instrument' in name_list:
+                                inst_idx = name_list.index('instrument')
+                                # Rebuild index with uppercase instruments
+                                predictions.index = idx.set_levels(
+                                    idx.levels[inst_idx].astype(str).str.upper(), 
+                                    level=inst_idx
+                                )
+                                logger.info(f"Standardized instruments in predictions to UPPERCASE (Level: {idx.names[inst_idx]})")
+                    except Exception as e:
+                        logger.warning(f"Could not standardize prediction index: {e}")
+
                 logger.info(f"Generated predictions: shape={predictions.shape}")
                 if not predictions.empty:
-                    logger.info(f"Predictions head:\n{predictions.head()}")
-                    logger.info(f"Predictions tail:\n{predictions.tail()}")
-                    logger.info(f"Unique dates in predictions: {predictions.index.get_level_values('datetime').nunique()}")
+                    # Count non-zero non-nan values
+                    valid_mask = predictions.notna() & (predictions != 0)
+                    non_nan_count = valid_mask.values.sum() if hasattr(valid_mask, 'values') else valid_mask.sum()
+                    unique_vals = predictions.nunique()
+                    logger.info(f"Predictions statistics:\nTotal: {len(predictions)}\nValid: {non_nan_count}\nUnique values: {unique_vals}")
+                    
+                    if non_nan_count == 0:
+                        logger.error("ALL predictions are NaN or zero! Strategy will result in an empty portfolio.")
+                    elif unique_vals < 2:
+                        logger.warning("All predictions have the SAME value. Strategy cannot rank instruments.")
+                        
+                    logger.info(f"Predictions sample:\n{predictions.head()}")
                 else:
                     logger.warning("Predictions dataframe is EMPTY!")
 
@@ -383,14 +426,24 @@ async def run_backtest(
                     benchmark_to_pass = resolved_benchmark
 
                 def run_backtest_call():
-                    return qlib_backtest(
-                        start_time=resolved_start_str,
-                        end_time=resolved_end_str,
-                        strategy=strategy_config,
-                        executor=executor_config,
-                        benchmark=benchmark_to_pass,
-                        exchange_kwargs=exchange_kwargs,
-                    )
+                    # Suppress benign Qlib warnings and noisy logs inside the backtest call
+                    qlib_logger = logging.getLogger("qlib")
+                    old_level = qlib_logger.level
+                    qlib_logger.setLevel(logging.WARNING)
+                    
+                    try:
+                        with warnings.catch_warnings():
+                            warnings.filterwarnings("ignore", message=".*common_infra is not set.*")
+                            return qlib_backtest(
+                                start_time=resolved_start_str,
+                                end_time=resolved_end_str,
+                                strategy=strategy_config,
+                                executor=executor_config,
+                                benchmark=benchmark_to_pass,
+                                exchange_kwargs=exchange_kwargs,
+                            )
+                    finally:
+                        qlib_logger.setLevel(old_level)
 
                 portfolio_metric_dict, indicator_dict = await asyncio.to_thread(run_backtest_call)
                 print(f"DEBUG: PM keys: {list(portfolio_metric_dict.keys())}")
