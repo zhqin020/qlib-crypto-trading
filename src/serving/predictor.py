@@ -13,10 +13,10 @@ from datetime import datetime
 import pandas as pd
 import uuid
 
-from ..analytics.investment_kpis import kpi_registry
-from ..monitoring.process_monitor import monitor, ProcessStatus
-from ..utils.qlib_state import qlib_init_context
-from ..utils.datasets import load_snapshot_metadata
+from analytics.investment_kpis import kpi_registry
+from monitoring.process_monitor import monitor, ProcessStatus
+from utils.qlib_state import qlib_init_context
+from utils.datasets import load_snapshot_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -173,12 +173,20 @@ async def predict_today(model_id: str, dataset_ref: str) -> Dict[str, Any]:
                         feature_config = json.load(f)
                     handler_config = feature_config["config"]
                 else:
-                    from ..data_pipeline.features import get_alpha158_config
+                    from data_pipeline.features import get_alpha158_config
                     handler_config = get_alpha158_config()
 
                 # Update handler config for today's data
                 handler_config["kwargs"]["start_time"] = today
                 handler_config["kwargs"]["end_time"] = today
+
+                # Add fit range from model metadata to handler config
+                fit_range = model_meta.get("segments", {}).get("train")
+                if fit_range and "kwargs" in handler_config:
+                    if handler_config["kwargs"].get("fit_start_time") is None:
+                        handler_config["kwargs"]["fit_start_time"] = fit_range[0]
+                    if handler_config["kwargs"].get("fit_end_time") is None:
+                        handler_config["kwargs"]["fit_end_time"] = fit_range[1]
 
                 # Step 5: Create dataset
                 await monitor.update_progress(process_id, 71.4, f"Creating dataset for {today}", 5)

@@ -159,6 +159,7 @@ def safe_conversion(output_file: Path):
 def prepare_normalized_csv(
     csv_files: List[Path],
     output_dir: Path,
+    freq: str = "1d",
     chunk_size: int = 100000
 ) -> Dict[str, Path]:
     """
@@ -247,7 +248,11 @@ def prepare_normalized_csv(
 
                 # Convert to Qlib format
                 chunk['instrument'] = symbol
-                chunk['date'] = pd.to_datetime(chunk['datetime']).dt.strftime('%Y-%m-%d')
+                # Use high-frequency format if not daily
+                if freq == "1d":
+                    chunk['date'] = pd.to_datetime(chunk['datetime']).dt.strftime('%Y-%m-%d')
+                else:
+                    chunk['date'] = pd.to_datetime(chunk['datetime']).dt.strftime('%Y-%m-%d %H:%M:%S')
 
                 # Qlib expects these exact columns
                 normalized_chunk = chunk[['instrument', 'date', 'open', 'high', 'low', 'close', 'volume']].copy()
@@ -329,7 +334,7 @@ def run_official_dump_bin(
         raise ValueError(f"Input path is not a directory: {normalized_csv_dir}")
 
     # Validate freq parameter
-    valid_freqs = ['day', '1h', '2h', '4h', '15min', '5min', '1min']
+    valid_freqs = ['day', '1h', '2h', '4h', '60min', '15min', '5min', '1min']
     if freq not in valid_freqs:
         raise ValueError(f"Invalid frequency: {freq}. Valid values: {valid_freqs}")
 
@@ -480,7 +485,7 @@ def convert_crypto_data_official(
 
     # Validate frequency format
     import re
-    if not re.match(r'^[0-9]{0,2}[mhd]$', freq.lower()):
+    if not re.match(r'^[0-9]{0,2}[mhd]$', freq.lower()) and freq.lower() not in ["day", "1h", "15min", "5min", "1min"]:
         raise ValueError(f"Invalid frequency format: {freq}. Expected format: 1d, 1h, 15m, etc.")
 
     logger.info(f"Converting crypto data: csv_dir={csv_dir}, qlib_dir={qlib_dir}, freq={freq}")
@@ -500,22 +505,31 @@ def convert_crypto_data_official(
     if not csv_files:
         raise ValueError(f"No CSV files found in {csv_dir}")
 
-    # Filter for crypto only (daily frequency for now)
-    crypto_csv_files = [f for f in csv_files if freq.replace("d", "D") in f.name or "1d" in f.name.lower()]
+    # Filter for crypto only
+    # Match frequency in filename (e.g., BTC_USDT_1h.csv matches freq='1h')
+    pattern = freq.lower()
+    crypto_csv_files = [f for f in csv_files if pattern in f.name.lower()]
     if not crypto_csv_files:
         raise ValueError(f"No crypto CSV files found matching frequency {freq} in {csv_dir}")
 
     logger.info(f"Found {len(crypto_csv_files)} crypto CSV files for {freq} frequency")
 
     # Step 1: Normalize CSVs to Qlib format
-    normalized_dir = qlib_path.parent / "normalized_temp"
-    normalized_files = prepare_normalized_csv(crypto_csv_files, normalized_dir)
+    normalized_dir = qlib_path.parent / f"normalized_temp_{freq}"
+    normalized_files = prepare_normalized_csv(crypto_csv_files, normalized_dir, freq=freq)
+
+    # Map our freq to Qlib's dump_bin freq
+    freq_map = {
+        "1d": "day",
+        "1h": "60min"
+    }
+    qlib_dump_freq = freq_map.get(freq, freq)
 
     # Step 2: Run official dump_bin.py
     result = run_official_dump_bin(
         normalized_csv_dir=normalized_dir,
         qlib_output_dir=qlib_path,
-        freq="day",
+        freq=qlib_dump_freq,
         include_fields="open,close,high,low,volume,factor"
     )
 

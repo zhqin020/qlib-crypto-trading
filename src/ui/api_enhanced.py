@@ -16,9 +16,9 @@ import asyncio
 import re
 from datetime import datetime, timezone
 
-from .events import get_event_broadcaster
-from ..monitoring.process_monitor import monitor, ProcessInfo
-from .security import (
+from ui.events import get_event_broadcaster
+from monitoring.process_monitor import monitor, ProcessInfo
+from ui.security import (
     authenticate_websocket,
     connection_manager,
     check_message_size,
@@ -203,7 +203,7 @@ def validate_path_safety(resolved_path: Path, allowed_base: Path) -> Path:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application lifespan (startup/shutdown)"""
-    from ..utils.background_tasks import background_manager
+    from utils.background_tasks import background_manager
 
     # Startup
     logger.info("Starting API server...")
@@ -377,6 +377,8 @@ class BacktestRequest(BaseModel):
     costs: str = Field(default="medium", pattern="^(low|medium|high)$")
     rebalance: str = Field(default="weekly", pattern="^(daily|weekly|monthly)$")
     funding: bool = False
+    topk: int = Field(default=10, ge=1, le=100)
+    long_short: bool = False
 
     @field_validator('model_id')
     def validate_model_id(cls, v):
@@ -701,7 +703,7 @@ async def list_datasets():
 async def download_data(request: DataDownloadRequest):
     """Download crypto market data"""
     import uuid
-    from ..data_pipeline.market_data import download_crypto_universe
+    from data_pipeline.market_data import download_crypto_universe
 
     # Generate process ID
     process_id = f"download_{uuid.uuid4().hex[:8]}"
@@ -760,7 +762,7 @@ async def convert_data(dataset: str, freq: str = "1d"):
         HTTPException 403: Path traversal attempt detected
         HTTPException 500: Conversion failed
     """
-    from ..data_pipeline.snapshot import create_snapshot
+    from data_pipeline.snapshot import create_snapshot
 
     # Validate dataset name to prevent path traversal
     dataset = validate_dataset_name(dataset)
@@ -820,8 +822,8 @@ async def list_models():
 async def train_model(request: TrainModelRequest):
     """Train a new model with comprehensive validation"""
     import uuid
-    from ..models.trainer import train_model as train
-    from ..data_pipeline.features import create_feature_set
+    from models.trainer import train_model as train
+    from data_pipeline.features import create_feature_set
 
     # Validate dataset exists before starting background task
     try:
@@ -933,7 +935,7 @@ async def get_model(model_id: str):
 async def run_backtest(request: BacktestRequest):
     """Run backtest for a model with comprehensive validation"""
     import uuid
-    from ..backtesting.engine import run_backtest as run_bt
+    from backtesting.engine import run_backtest as run_bt
 
     # Validate dataset exists
     try:
@@ -969,6 +971,8 @@ async def run_backtest(request: BacktestRequest):
                 costs=request.costs,
                 rebalance=request.rebalance,
                 funding=request.funding,
+                topk=request.topk,
+                long_short=request.long_short,
             )
 
             if "error" not in result:
@@ -1024,7 +1028,7 @@ async def list_backtests():
 async def generate_predictions(request: PredictionRequest):
     """Generate predictions with comprehensive validation"""
     import uuid
-    from ..serving.predictor import predict_today
+    from serving.predictor import predict_today
 
     # Validate dataset exists
     try:
@@ -1126,7 +1130,7 @@ async def list_experiments():
 @app.get("/api/market-data/quote/{symbol}")
 async def get_quote(symbol: str, provider: str = "binance"):
     """Get real-time quote"""
-    from ..data_pipeline.market_data import get_quote
+    from data_pipeline.market_data import get_quote
 
     try:
         result = await get_quote(symbol, provider)
@@ -1265,7 +1269,7 @@ async def websocket_market_data(websocket: WebSocket):
             current_symbols_state = ",".join(sorted(symbols))
             if symbols and current_symbols_state != last_symbols_state:
                 try:
-                    from ..data_pipeline.market_data import get_quotes_batch
+                    from data_pipeline.market_data import get_quotes_batch
                     quotes = await get_quotes_batch(symbols)
 
                     try:

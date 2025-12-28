@@ -9,9 +9,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Awaitable, Callable, Dict, List, Optional
 
-from .market_data import download_crypto_universe
-from .snapshot import create_snapshot
-from ..analytics.investment_kpis import kpi_registry
+from data_pipeline.market_data import download_crypto_universe
+from data_pipeline.snapshot import create_snapshot
+from analytics.investment_kpis import kpi_registry
 
 logger = logging.getLogger(__name__)
 

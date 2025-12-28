@@ -13,17 +13,19 @@ import pandas as pd
 import numpy as np
 import uuid
 
-from ..analytics.investment_kpis import kpi_registry
-from ..monitoring.process_monitor import monitor, ProcessStatus
-from ..utils.datasets import load_snapshot_metadata
-from ..utils.qlib_state import qlib_init_context
+from analytics.investment_kpis import kpi_registry
+from monitoring.process_monitor import monitor, ProcessStatus
+from utils.datasets import load_snapshot_metadata
+from utils.qlib_state import qlib_init_context
 
 logger = logging.getLogger(__name__)
 
 try:  # Optional dependency: qlib
     from qlib.backtest import backtest as _QLIB_backtest
+    from qlib.utils import init_instance_by_config as _QLIB_init_instance_by_config
 except ImportError:  # pragma: no cover - executed when qlib is unavailable
     _QLIB_backtest = None
+    _QLIB_init_instance_by_config = None
 
 
 if _QLIB_backtest is not None:
@@ -36,6 +38,16 @@ else:
 
     qlib_backtest._qlib_missing = True  # type: ignore[attr-defined]
 
+if _QLIB_init_instance_by_config is not None:
+    init_instance_by_config = _QLIB_init_instance_by_config
+else:
+    def init_instance_by_config(*args, **kwargs):  # type: ignore[override]
+        raise ModuleNotFoundError(
+            "Qlib utilities are required for workflows. Install qlib to enable this feature."
+        )
+
+    init_instance_by_config._qlib_missing = True  # type: ignore[attr-defined]
+
 
 async def run_backtest(
     model_id: str,
@@ -43,6 +55,8 @@ async def run_backtest(
     costs: str,
     rebalance: str,
     funding: bool = False,
+    topk: int = 10,
+    long_short: bool = False,
     start_time: Optional[str] = None,
     end_time: Optional[str] = None,
     benchmark: Optional[str] = None,
@@ -70,6 +84,16 @@ async def run_backtest(
 
     # Total steps: validation, init, load_model, config, run_backtest, calc_metrics, save
     total_steps = 7
+
+    # Map human-readable frequency strings to Qlib format
+    freq_map = {
+        "weekly": "week",
+        "monthly": "month",
+        "daily": "day",
+        "1h": "60min",
+        "hourly": "60min"
+    }
+    resolved_rebalance = freq_map.get(rebalance, rebalance)
 
     process_started = False
 
@@ -165,7 +189,7 @@ async def run_backtest(
 
             resolved_benchmark = benchmark or snapshot_meta.get("benchmark")
             if not resolved_benchmark:
-                resolved_benchmark = "BTC_USDT"
+                resolved_benchmark = "BTC"
                 logger.info(
                     "No benchmark provided for dataset '%s'; defaulting to %s",
                     dataset_ref,
@@ -212,18 +236,82 @@ async def run_backtest(
                     4,
                 )
 
+                # Resolve frequency for handler and exchange
+                dataset_freq = snapshot_meta.get("frequency", "1d")
+                qlib_handler_freq = freq_map.get(dataset_freq, "day")
+                logger.info(f"Resolved dataset frequency: {dataset_freq} -> {qlib_handler_freq}")
+
                 # Get exchange cost configuration (NOT executor config)
                 # This will be passed to backtest() via exchange_kwargs parameter
-                exchange_kwargs = get_exchange_config(costs, funding)
+                exchange_kwargs = get_exchange_config(costs, funding, qlib_handler_freq)
 
-                # Define trading strategy
+                # Get handler configuration from model metadata
+                config_dir = project_root / "config" / "features"
+                feature_set_ref = model_meta.get("feature_set", "alpha158_crypto")
+                feature_config_file = config_dir / f"{feature_set_ref}.json"
+
+                if feature_config_file.exists():
+                    with open(feature_config_file) as f:
+                        feature_config = json.load(f)
+                    handler_config = feature_config["config"]
+                else:
+                    from data_pipeline.features import get_alpha158_config
+                    handler_config = get_alpha158_config()
+
+                # Add fit range from model metadata to handler config
+                fit_range = model_meta.get("segments", {}).get("train")
+                if fit_range and "kwargs" in handler_config:
+                    if handler_config["kwargs"].get("fit_start_time") is None:
+                        handler_config["kwargs"]["fit_start_time"] = fit_range[0]
+                    if handler_config["kwargs"].get("fit_end_time") is None:
+                        handler_config["kwargs"]["fit_end_time"] = fit_range[1]
+                
+                if "kwargs" not in handler_config:
+                    handler_config["kwargs"] = {}
+                handler_config["kwargs"]["freq"] = qlib_handler_freq
+                logger.info(f"Using frequency '{qlib_handler_freq}' for backtest handler")
+
+                # Define dataset for signal prediction
+                # Generate predictions first to avoid signal type issues in qlib_backtest
+                await monitor.update_progress(process_id, 64.3, f"Generating predictions for backtest", 4)
+
+                prediction_dataset_config = {
+                    "class": "DatasetH",
+                    "module_path": "qlib.data.dataset",
+                    "kwargs": {
+                        "handler": handler_config,
+                        "segments": {
+                            "test": (resolved_start_str, resolved_end_str)
+                        },
+                    },
+                }
+
+                prediction_dataset = await asyncio.to_thread(init_instance_by_config, prediction_dataset_config)
+                predictions = await asyncio.to_thread(model.predict, prediction_dataset)
+                
+                logger.info(f"Generated predictions: shape={predictions.shape}")
+                if not predictions.empty:
+                    logger.info(f"Predictions head:\n{predictions.head()}")
+                    logger.info(f"Predictions tail:\n{predictions.tail()}")
+                    logger.info(f"Unique dates in predictions: {predictions.index.get_level_values('datetime').nunique()}")
+                else:
+                    logger.warning("Predictions dataframe is EMPTY!")
+
+                # Define trading strategy with pre-calculated predictions
+                if long_short:
+                    # For long-short, we use a custom or tailored WeightStrategy if needed,
+                    # but since Qlib's TopkDropout is long-only, we'll note the limitation
+                    # or switch to a basic signal selection if possible.
+                    # For now, let's keep TopkDropout but allow topk to be set.
+                    logger.warning("LongShortStrategy support is limited; using TopkDropout on both ends is not standard.")
+                
                 strategy_config = {
                     "class": "TopkDropoutStrategy",
                     "module_path": "qlib.contrib.strategy.signal_strategy",
                     "kwargs": {
-                        "signal": model,
-                        "topk": 10,
-                        "n_drop": 2,
+                        "signal": predictions,
+                        "topk": topk,
+                        "n_drop": max(1, topk // 5),
                         "risk_degree": 0.95,
                     },
                 }
@@ -233,7 +321,7 @@ async def run_backtest(
                     "class": "SimulatorExecutor",
                     "module_path": "qlib.backtest.executor",
                     "kwargs": {
-                        "time_per_step": rebalance,
+                        "time_per_step": qlib_handler_freq,
                         "generate_portfolio_metrics": True,
                         "verbose": False,
                         # NOTE: Cost parameters (open_cost, close_cost, etc.) are passed
@@ -257,17 +345,46 @@ async def run_backtest(
                 # Run backtest with exchange_kwargs
                 logger.info(f"Running backtest for model {model_id} with costs={costs}...")
 
+                # Pre-fetch benchmark to avoid resampling issues in Qlib
+                try:
+                    from qlib.data import D
+                    logger.info(f"Pre-fetching benchmark {resolved_benchmark} at frequency {qlib_handler_freq}...")
+                    benchmark_df = await asyncio.to_thread(
+                        D.features, 
+                        [resolved_benchmark], 
+                        ['$close'], 
+                        start_time=resolved_start_str, 
+                        end_time=resolved_end_str, 
+                        freq=qlib_handler_freq
+                    )
+                    if not benchmark_df.empty:
+                        # Convert to returns for Qlib benchmark
+                        benchmark_series = benchmark_df['$close'].groupby(level='datetime').first()
+                        benchmark_returns = benchmark_series.sort_index().pct_change().fillna(0)
+                        benchmark_to_pass = pd.Series(benchmark_returns)
+                        logger.info(f"Benchmark pre-fetched: {len(benchmark_to_pass)} points, type={type(benchmark_to_pass)}")
+                    else:
+                        benchmark_to_pass = resolved_benchmark
+                        logger.warning(f"Benchmark {resolved_benchmark} returned empty data; falling back to string")
+                except Exception as b_err:
+                    logger.warning(f"Error pre-fetching benchmark: {b_err}. Falling back to string.")
+                    benchmark_to_pass = resolved_benchmark
+
                 def run_backtest_call():
                     return qlib_backtest(
                         start_time=resolved_start_str,
                         end_time=resolved_end_str,
                         strategy=strategy_config,
                         executor=executor_config,
-                        benchmark=resolved_benchmark,
+                        benchmark=benchmark_to_pass,
                         exchange_kwargs=exchange_kwargs,
                     )
 
                 portfolio_metric_dict, indicator_dict = await asyncio.to_thread(run_backtest_call)
+                print(f"DEBUG: PM keys: {list(portfolio_metric_dict.keys())}")
+                for k, v in portfolio_metric_dict.items():
+                    if isinstance(v, pd.DataFrame):
+                        print(f"DEBUG: Report {k} shape: {v.shape}\n{v.head()}")
 
                 # Step 6: Calculate metrics
                 await monitor.update_progress(process_id, 85.7, f"Calculating performance metrics", 6)
@@ -287,6 +404,8 @@ async def run_backtest(
                         "costs": costs,
                         "rebalance": rebalance,
                         "funding": funding,
+                        "topk": topk,
+                        "long_short": long_short,
                         "benchmark": resolved_benchmark,
                     },
                     "metrics": {
@@ -381,7 +500,7 @@ async def run_backtest(
         return {"status": "cancelled", "process_id": process_id}
 
 
-def get_exchange_config(costs: str, funding: bool = False) -> Dict[str, Any]:
+def get_exchange_config(costs: str, funding: bool = False, freq: str = "day") -> Dict[str, Any]:
     """
     Get exchange configuration for Qlib backtest.
 
@@ -406,7 +525,7 @@ def get_exchange_config(costs: str, funding: bool = False) -> Dict[str, Any]:
 
     cost_configs = {
         "low": {
-            "freq": "day",
+            "freq": freq,
             "limit_threshold": None,      # No price limits for crypto
             "deal_price": "close",
             "open_cost": 0.0002,          # 0.02% - VIP maker fee (Binance VIP 1+)
@@ -415,7 +534,7 @@ def get_exchange_config(costs: str, funding: bool = False) -> Dict[str, Any]:
             "impact_cost": 0.00005,       # 0.005% - Low market impact (high liquidity)
         },
         "medium": {
-            "freq": "day",
+            "freq": freq,
             "limit_threshold": None,
             "deal_price": "close",
             "open_cost": 0.0005,          # 0.05% - Standard maker fee (Binance)
@@ -424,7 +543,7 @@ def get_exchange_config(costs: str, funding: bool = False) -> Dict[str, Any]:
             "impact_cost": 0.0001,        # 0.01% - Moderate market impact
         },
         "high": {
-            "freq": "day",
+            "freq": freq,
             "limit_threshold": None,
             "deal_price": "close",
             "open_cost": 0.001,           # 0.1% - Conservative maker fee
@@ -449,33 +568,66 @@ def get_exchange_config(costs: str, funding: bool = False) -> Dict[str, Any]:
 
 def calculate_crypto_metrics(portfolio_dict: Dict, indicator_dict: Dict) -> Dict[str, float]:
     """
-    Calculate crypto-specific performance metrics
-
-    Standard metrics:
-    - Annualized return
-    - Sharpe ratio
-    - Max drawdown
-    - Win rate
-
-    Crypto-specific:
-    - 24/7 adjusted metrics
-    - Volatility-adjusted returns
+    Calculate crypto-specific performance metrics from Qlib output
     """
     try:
-        # Extract returns series
-        returns = pd.Series(portfolio_dict.get("excess_return_with_cost", []))
+        # Extract the report dataframe (usually keyed by frequency, e.g., '1day' or '1week')
+        report_df = None
+        for freq in ['1day', '1d', 'day', '1week', 'week']:
+            if freq in portfolio_dict:
+                report_df = portfolio_dict[freq]
+                break
+        
+        if report_df is None:
+            # Fallback to first available key if any
+            if portfolio_dict:
+                first_key = list(portfolio_dict.keys())[0]
+                report_df = portfolio_dict[first_key]
+            else:
+                return {}
+
+        # Handle tuple return (report_df, positions_df)
+        if isinstance(report_df, tuple):
+            report_df = report_df[0]
+
+        if report_df is None or report_df.empty:
+            return {}
+        # 'return' is the strategy return
+        if 'return' in report_df.columns:
+            returns = report_df['return']
+        elif 'excess_return_with_cost' in report_df.columns:
+            returns = report_df['excess_return_with_cost']
+        else:
+            # Try to find any column with 'return' in name
+            return_cols = [c for c in report_df.columns if 'return' in c.lower()]
+            if return_cols:
+                returns = report_df[return_cols[0]]
+            else:
+                return {}
 
         if len(returns) == 0:
             return {}
 
         # Annualized return (365 days for crypto)
         total_return = (1 + returns).prod() - 1
-        years = len(returns) / 365
+        
+        # Determine frequency for annualization
+        # For daily crypto, we use 365. For weekly, we use 52.
+        # Check frequency of index if possible, or use heuristic
+        annualization_factor = 365
+        if len(returns) > 1:
+            # Check gap between first two indices
+            if hasattr(returns.index, 'freq') and returns.index.freq == 'W':
+                annualization_factor = 52
+            elif (returns.index[1] - returns.index[0]).days >= 6:
+                annualization_factor = 52
+
+        years = len(returns) / annualization_factor
         annualized_return = (1 + total_return) ** (1 / years) - 1 if years > 0 else 0
 
-        # Sharpe ratio (24/7 adjustment)
+        # Sharpe ratio
         daily_vol = returns.std()
-        sharpe_ratio = (returns.mean() / daily_vol) * np.sqrt(365) if daily_vol > 0 else 0
+        sharpe_ratio = (returns.mean() / daily_vol) * np.sqrt(annualization_factor) if daily_vol > 0 else 0
 
         # Sortino ratio (downside deviation)
         downside_returns = returns[returns < 0]

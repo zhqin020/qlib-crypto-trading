@@ -4,12 +4,19 @@ Run backtest for a trained model
 """
 
 import argparse
+import os
 import asyncio
 import sys
 from pathlib import Path
 
+# Set Qlib version for setuptools-scm
+os.environ['SETUPTOOLS_SCM_PRETEND_VERSION'] = '0.9.8'
+
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
+import logging
+logging.basicConfig(level=logging.INFO)
 
 from backtesting.engine import run_backtest
 
@@ -25,7 +32,9 @@ async def main():
     parser.add_argument("--funding", action="store_true", help="Include funding rate costs")
     parser.add_argument("--start", dest="start_time", help="Backtest start date (YYYY-MM-DD)")
     parser.add_argument("--end", dest="end_time", help="Backtest end date (YYYY-MM-DD)")
-    parser.add_argument("--benchmark", help="Benchmark instrument (e.g., BTC_USDT)")
+    parser.add_argument("--benchmark", help="Benchmark instrument (e.g., BTC)")
+    parser.add_argument("--topk", type=int, default=10, help="Number of assets to hold (default: 10)")
+    parser.add_argument("--long-short", action="store_true", help="Enable long-short trading (if supported)")
 
     args = parser.parse_args()
 
@@ -38,6 +47,8 @@ async def main():
         costs=args.costs,
         rebalance=args.rebalance,
         funding=args.funding,
+        topk=args.topk,
+        long_short=args.long_short,
         start_time=args.start_time,
         end_time=args.end_time,
         benchmark=args.benchmark,

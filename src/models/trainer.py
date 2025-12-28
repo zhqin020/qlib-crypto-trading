@@ -12,11 +12,11 @@ import uuid
 
 import pandas as pd
 
-from ..analytics.investment_kpis import kpi_registry
-from ..monitoring.process_monitor import monitor, ProcessStatus
-from ..utils.datasets import load_snapshot_metadata
-from ..utils.qlib_state import qlib_init_context
-from ..utils.torch_stub import ensure_torch_available
+from analytics.investment_kpis import kpi_registry
+from monitoring.process_monitor import monitor, ProcessStatus
+from utils.datasets import load_snapshot_metadata
+from utils.qlib_state import qlib_init_context
+from utils.torch_stub import ensure_torch_available
 
 logger = logging.getLogger(__name__)
 
@@ -28,13 +28,15 @@ ensure_torch_available()
 SEGMENT_KEYS: Tuple[str, str, str] = ("train", "valid", "test")
 
 
-def _format_segment(start_ts: pd.Timestamp, end_ts: pd.Timestamp) -> Tuple[str, str]:
-    """Return a tuple of ISO date strings for a segment."""
+def _format_segment(start_ts: pd.Timestamp, end_ts: pd.Timestamp, freq: str = "1d") -> Tuple[str, str]:
+    """Return a tuple of date/time strings for a segment."""
 
-    return (start_ts.strftime("%Y-%m-%d"), end_ts.strftime("%Y-%m-%d"))
+    if freq == "1d" or freq == "D" or freq == "day":
+        return (start_ts.strftime("%Y-%m-%d"), end_ts.strftime("%Y-%m-%d"))
+    return (start_ts.strftime("%Y-%m-%d %H:%M:%S"), end_ts.strftime("%Y-%m-%d %H:%M:%S"))
 
 
-def _normalize_segments(segments: Dict[str, Tuple[str, str]]) -> Dict[str, Tuple[str, str]]:
+def _normalize_segments(segments: Dict[str, Tuple[str, str]], freq: str = "1d") -> Dict[str, Tuple[str, str]]:
     """Validate and normalize user-provided segments."""
 
     normalized: Dict[str, Tuple[str, str]] = {}
@@ -52,7 +54,7 @@ def _normalize_segments(segments: Dict[str, Tuple[str, str]]) -> Dict[str, Tuple
         if start_ts > end_ts:
             raise ValueError(f"Segment '{key}' start must be on or before its end.")
 
-        normalized[key] = _format_segment(start_ts, end_ts)
+        normalized[key] = _format_segment(start_ts, end_ts, freq)
 
     return normalized
 
@@ -68,7 +70,15 @@ def _auto_segments(snapshot_meta: Dict[str, Any]) -> Dict[str, Tuple[str, str]]:
             "Dataset metadata missing start_date/end_date; specify segments explicitly."
         )
 
-    date_index = pd.date_range(start=start, end=end, freq="D")
+    freq = snapshot_meta.get("frequency", "1d")
+    # Normalize frequency for pandas
+    pd_freq = freq
+    if freq == "1d":
+        pd_freq = "D"
+    elif freq == "1h":
+        pd_freq = "H"
+
+    date_index = pd.date_range(start=start, end=end, freq=pd_freq)
     total = len(date_index)
 
     if total < 3:
@@ -78,9 +88,9 @@ def _auto_segments(snapshot_meta: Dict[str, Any]) -> Dict[str, Tuple[str, str]]:
 
     if total == 3:
         return {
-            "train": _format_segment(date_index[0], date_index[0]),
-            "valid": _format_segment(date_index[1], date_index[1]),
-            "test": _format_segment(date_index[2], date_index[2]),
+            "train": _format_segment(date_index[0], date_index[0], freq),
+            "valid": _format_segment(date_index[1], date_index[1], freq),
+            "test": _format_segment(date_index[2], date_index[2], freq),
         }
 
     train_end_idx = max(0, int(total * 0.7) - 1)
@@ -95,9 +105,9 @@ def _auto_segments(snapshot_meta: Dict[str, Any]) -> Dict[str, Tuple[str, str]]:
         train_end_idx = max(0, valid_end_idx - 1)
 
     return {
-        "train": _format_segment(date_index[0], date_index[train_end_idx]),
-        "valid": _format_segment(date_index[train_end_idx + 1], date_index[valid_end_idx]),
-        "test": _format_segment(date_index[valid_end_idx + 1], date_index[-1]),
+        "train": _format_segment(date_index[0], date_index[train_end_idx], freq),
+        "valid": _format_segment(date_index[train_end_idx + 1], date_index[valid_end_idx], freq),
+        "test": _format_segment(date_index[valid_end_idx + 1], date_index[-1], freq),
     }
 
 
@@ -108,7 +118,7 @@ def _resolve_segments(
     """Return normalized segments, deriving defaults when explicit values are absent."""
 
     if explicit:
-        return _normalize_segments(explicit)
+        return _normalize_segments(explicit, snapshot_meta.get("frequency", "1d"))
 
     return _auto_segments(snapshot_meta)
 
@@ -464,8 +474,30 @@ async def train_model(
                     handler_config = feature_config["config"]
                 else:
                     # Use default Alpha158 if no config found
-                    from ..data_pipeline.features import get_alpha158_config
+                    from data_pipeline.features import get_alpha158_config
                     handler_config = get_alpha158_config()
+
+                # Ensure time parameters are explicitly set from segments
+                if "kwargs" not in handler_config:
+                    handler_config["kwargs"] = {}
+
+                # Map frequency for Qlib
+                freq_val = snapshot_meta.get("frequency", "1d")
+                freq_map = {
+                    "1h": "60min",
+                    "1d": "day",
+                    "day": "day"
+                }
+                qlib_freq = freq_map.get(freq_val, freq_val)
+                handler_config["kwargs"]["freq"] = qlib_freq
+                logger.info(f"Using frequency '{qlib_freq}' for Qlib data handler")
+                logger.info(f"Before time fix: {handler_config['kwargs']}")
+                if "fit_start_time" not in handler_config["kwargs"] or handler_config["kwargs"]["fit_start_time"] is None:
+                    handler_config["kwargs"]["fit_start_time"] = resolved_segments["train"][0]
+                    handler_config["kwargs"]["fit_end_time"] = resolved_segments["test"][1]
+                    logger.info(f"Fixed time parameters: fit_start_time={handler_config['kwargs']['fit_start_time']}, fit_end_time={handler_config['kwargs']['fit_end_time']}")
+                else:
+                    logger.info(f"Time parameters already set: fit_start_time={handler_config['kwargs']['fit_start_time']}, fit_end_time={handler_config['kwargs']['fit_end_time']}")
 
                 # Get device configuration from params or default to auto
                 device_str = (params or {}).get("device", "auto")
@@ -535,89 +567,89 @@ async def train_model(
                         else:
                             raise
 
-                # Check for cancellation after training
-                process = await monitor.get_process(process_id)
-                if process and process.status == ProcessStatus.CANCELLED:
-                    return {"status": "cancelled", "process_id": process_id}
+                    # Check for cancellation after training
+                    process = await monitor.get_process(process_id)
+                    if process and process.status == ProcessStatus.CANCELLED:
+                        return {"status": "cancelled", "process_id": process_id}
 
-                # Step 6: Generate predictions
-                await monitor.update_progress(process_id, 75.0, f"Generating predictions for validation", 6)
+                    # Step 6: Generate predictions
+                    await monitor.update_progress(process_id, 75.0, f"Generating predictions for validation", 6)
 
-                # Make predictions
-                predictions = model.predict(dataset)
+                    # Make predictions
+                    predictions = model.predict(dataset)
 
-                # Record signals
-                sr = SignalRecord(model, dataset, recorder=R.get_recorder())
-                sr.generate()
+                    # Record signals (inside experiment context)
+                    sr = SignalRecord(model, dataset, recorder=R.get_recorder())
+                    sr.generate()
 
-                # Step 7: Save model
-                await monitor.update_progress(process_id, 87.5, f"Saving model to disk", 7)
+                    # Step 7: Save model
+                    await monitor.update_progress(process_id, 87.5, f"Saving model to disk", 7)
 
-                # Save model (best-effort for mocked objects in tests)
-                model_path = models_dir / f"{model_id}.pkl"
-                import pickle
-                saved_model_path: Optional[Path] = None
-                try:
-                    with open(model_path, 'wb') as f:
-                        pickle.dump(model, f)
-                    saved_model_path = model_path
-                except Exception as serialize_error:  # pragma: no cover - defensive path
-                    logger.warning(
-                        "Could not persist model '%s': %s", model_id, serialize_error
-                    )
+                    # Save model (best-effort for mocked objects in tests)
+                    model_path = models_dir / f"{model_id}.pkl"
+                    import pickle
+                    saved_model_path: Optional[Path] = None
+                    try:
+                        with open(model_path, 'wb') as f:
+                            pickle.dump(model, f)
+                        saved_model_path = model_path
+                    except Exception as serialize_error:  # pragma: no cover - defensive path
+                        logger.warning(
+                            "Could not persist model '%s': %s", model_id, serialize_error
+                        )
 
-                # Step 8: Record results
-                await monitor.update_progress(process_id, 95.0, f"Recording training results", 8)
+                    # Step 8: Record results
+                    await monitor.update_progress(process_id, 95.0, f"Recording training results", 8)
 
-                # Get recorder info
-                recorder_info = R.get_recorder().list_metrics()
+                    # Get recorder info (inside experiment context)
+                    recorder_info = R.get_recorder().list_metrics()
 
-                result = {
-                    "model_id": model_id,
-                    "handler": handler,
-                    "dataset": dataset_ref,
-                    "feature_set": feature_set_ref,
-                    "status": "completed",
-                    "model_path": str(saved_model_path) if saved_model_path else None,
-                    "trained_at": datetime.now().isoformat(),
-                    "metrics": recorder_info,
-                    "params": params or {},
-                    "segments": resolved_segments,
-                }
-
-                training_kpis = _extract_training_kpis(recorder_info)
-                evaluation = kpi_registry.record(
-                    "training",
-                    {
+                    result = {
                         "model_id": model_id,
-                        "dataset": dataset_ref,
                         "handler": handler,
-                    },
-                    training_kpis,
-                )
+                        "dataset": dataset_ref,
+                        "feature_set": feature_set_ref,
+                        "status": "completed",
+                        "model_path": str(saved_model_path) if saved_model_path else None,
+                        "trained_at": datetime.now().isoformat(),
+                        "metrics": recorder_info,
+                        "params": params or {},
+                        "segments": resolved_segments,
+                    }
 
-                result["kpi_metrics"] = training_kpis
-                result["kpi_evaluation"] = evaluation.to_dict()
-                result["deployment_ready"] = evaluation.passed
-
-                log_level = "INFO" if evaluation.passed else "WARNING"
-                if evaluation.breaches:
-                    breach_summary = ", ".join(
-                        f"{b['metric']}->{b.get('actual')}" for b in evaluation.breaches
+                    training_kpis = _extract_training_kpis(recorder_info)
+                    evaluation = kpi_registry.record(
+                        "training",
+                        {
+                            "model_id": model_id,
+                            "dataset": dataset_ref,
+                            "handler": handler,
+                        },
+                        training_kpis,
                     )
-                    message = f"Investment KPI check failed: {breach_summary}"
-                else:
-                    message = "Investment KPI check passed"
 
-                await monitor.add_log(process_id, log_level, message)
+                    result["kpi_metrics"] = training_kpis
+                    result["kpi_evaluation"] = evaluation.to_dict()
+                    result["deployment_ready"] = evaluation.passed
 
-                # Save training metadata
-                meta_file = models_dir / f"{model_id}_meta.json"
-                with open(meta_file, 'w') as f:
-                    json.dump(result, f, indent=2, default=str)
+                    log_level = "INFO" if evaluation.passed else "WARNING"
+                    if evaluation.breaches:
+                        breach_summary = ", ".join(
+                            f"{b['metric']}->{b.get('actual')}" for b in evaluation.breaches
+                        )
+                        message = f"Investment KPI check failed: {breach_summary}"
+                    else:
+                        message = "Investment KPI check passed"
 
-                # Complete process monitoring
-                await monitor.complete_process(process_id, result)
+                    await monitor.add_log(process_id, log_level, message)
+
+                    # Save training metadata
+                    meta_file = models_dir / f"{model_id}_meta.json"
+                    with open(meta_file, 'w') as f:
+                        json.dump(result, f, indent=2, default=str)
+
+                    # Complete process monitoring
+                    await monitor.complete_process(process_id, result)
 
                 logger.info(f"Model trained successfully: {model_id}")
 
@@ -772,10 +804,10 @@ def get_model_config(
                 "colsample_bytree": 0.8879,
                 "learning_rate": 0.0421,
                 "subsample": 0.8789,
-                "lambda_l1": 205.6999,
-                "lambda_l2": 580.9768,
+                "lambda_l1": 0.01,
+                "lambda_l2": 0.01,
                 "max_depth": 8,
-                "num_leaves": 210,
+                "num_leaves": 31,
                 "num_threads": 20,
                 **params_copy
             },

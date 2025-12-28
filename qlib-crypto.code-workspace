@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../ai-crypto-agent"
+		},
+		{
+			"path": "../Qlib4Crypto"
+		},
+		{
+			"path": "../qlib"
+		}
+	],
+	"settings": {}
+}

@@ -154,6 +154,8 @@ async def list_tools() -> list[Tool]:
                     "costs": {"type": "string", "enum": ["low", "medium", "high"]},
                     "rebalance": {"type": "string", "enum": ["weekly", "monthly"]},
                     "funding": {"type": "boolean"},
+                    "topk": {"type": "integer", "default": 10},
+                    "long_short": {"type": "boolean", "default": false},
                 },
                 "required": ["model_id", "dataset_ref", "costs", "rebalance"],
             },
@@ -244,72 +246,72 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
     """Handle tool calls"""
     try:
         if name == "data_create_snapshot":
-            from ..data_pipeline.snapshot import create_snapshot
+            from data_pipeline.snapshot import create_snapshot
             result = await create_snapshot(**arguments)
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
         elif name == "features_create_set":
-            from ..data_pipeline.features import create_feature_set
+            from data_pipeline.features import create_feature_set
             result = await create_feature_set(**arguments)
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
         elif name == "market_data_get_quote":
-            from ..data_pipeline.market_data import get_quote
+            from data_pipeline.market_data import get_quote
             result = await get_quote(**arguments)
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
         elif name == "market_data_get_quotes_batch":
-            from ..data_pipeline.market_data import get_quotes_batch
+            from data_pipeline.market_data import get_quotes_batch
             result = await get_quotes_batch(**arguments)
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
         elif name == "market_data_get_historical":
-            from ..data_pipeline.market_data import get_historical
+            from data_pipeline.market_data import get_historical
             result = await get_historical(**arguments)
             return [TextContent(type="text", text=json.dumps(result, indent=2, default=str))]
 
         elif name == "market_data_subscribe":
-            from ..data_pipeline.market_data import subscribe
+            from data_pipeline.market_data import subscribe
             result = await subscribe(**arguments)
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
         elif name == "models_train":
-            from ..models.trainer import train_model
+            from models.trainer import train_model
             result = await train_model(**arguments)
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
         elif name == "experiments_run_recipe":
-            from ..models.experiments import run_recipe
+            from models.experiments import run_recipe
             result = await run_recipe(**arguments)
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
         elif name == "backtests_run":
-            from ..backtesting.engine import run_backtest
+            from backtesting.engine import run_backtest
             result = await run_backtest(**arguments)
             return [TextContent(type="text", text=json.dumps(result, indent=2, default=str))]
 
         elif name == "experiments_tag":
-            from ..models.experiments import tag_run
+            from models.experiments import tag_run
             result = await tag_run(**arguments)
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
         elif name == "runs_cancel":
-            from ..models.experiments import cancel_run
+            from models.experiments import cancel_run
             result = await cancel_run(**arguments)
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
         elif name == "serving_predict_today":
-            from ..serving.predictor import predict_today
+            from serving.predictor import predict_today
             result = await predict_today(**arguments)
             return [TextContent(type="text", text=json.dumps(result, indent=2, default=str))]
 
         elif name == "notifications_dispatch":
-            from ..serving.notifications import dispatch_notification
+            from serving.notifications import dispatch_notification
             result = await dispatch_notification(**arguments)
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
         elif name == "schedules_create":
-            from ..serving.scheduler import create_schedule
+            from serving.scheduler import create_schedule
             result = await create_schedule(**arguments)
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 

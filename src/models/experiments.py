@@ -20,6 +20,8 @@ async def run_recipe(
     recipe: str,
     costs: str,
     rebalance: str,
+    topk: int = 10,
+    long_short: bool = False,
     params: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """
@@ -36,8 +38,8 @@ async def run_recipe(
         Experiment results
     """
     try:
-        from .trainer import train_model
-        from ..backtesting.engine import run_backtest
+        from models.trainer import train_model
+        from backtesting.engine import run_backtest
 
         run_id = f"exp_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
 
@@ -51,7 +53,7 @@ async def run_recipe(
             recipe_config.update(params)
 
         # Create feature set for this experiment
-        from ..data_pipeline.features import create_feature_set
+        from data_pipeline.features import create_feature_set
 
         feature_handler = recipe_config.get("feature_handler", "alpha158")
         feature_set = await create_feature_set(
@@ -82,6 +84,8 @@ async def run_recipe(
                     costs=costs,
                     rebalance=rebalance,
                     funding=recipe_config.get("funding", False),
+                    topk=topk,
+                    long_short=long_short,
                     start_time=recipe_config.get("start_time"),
                     end_time=recipe_config.get("end_time"),
                     benchmark=recipe_config.get("benchmark"),

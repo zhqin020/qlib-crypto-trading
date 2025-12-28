@@ -3,9 +3,13 @@
 Train a sample model
 """
 
+import os
 import asyncio
 import sys
 from pathlib import Path
+
+# Set Qlib version for setuptools-scm
+os.environ['SETUPTOOLS_SCM_PRETEND_VERSION'] = '0.9.8'
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -23,7 +27,7 @@ async def main():
     # Create feature set
     print("Creating feature set...")
     feature_set = await create_feature_set(
-        dataset_ref="crypto",
+        dataset_ref="crypto_1h",
         handler="alpha158"
     )
     print(f"Feature set created: {feature_set['name']}")
@@ -32,10 +36,15 @@ async def main():
     # Train model
     print("Training LightGBM model...")
     result = await train_model(
-        dataset_ref="crypto",
+        dataset_ref="crypto_1h",
         feature_set_ref=feature_set["name"],
         handler="lightgbm",
-        params={}
+        params={},
+        segments={
+            "train": ["2024-03-01", "2024-08-31"],
+            "valid": ["2024-09-01", "2024-10-31"],
+            "test": ["2024-11-01", "2024-12-26"]
+        }
     )
 
     if "error" in result:

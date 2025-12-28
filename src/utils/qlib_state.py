@@ -69,7 +69,7 @@ def init_qlib_clean(
         # Register 24/7 crypto calendar BEFORE qlib.init()
         # This must happen before init to ensure crypto calendar is available
         try:
-            from ..data_pipeline.crypto_calendar_provider import register_crypto_calendar
+            from data_pipeline.crypto_calendar_provider import register_crypto_calendar
             register_crypto_calendar()
             logger.info("Crypto calendar registered")
         except Exception as e:

@@ -3,9 +3,13 @@
 Generate predictions using a trained model
 """
 
+import os
 import asyncio
 import sys
 from pathlib import Path
+
+# Set Qlib version for setuptools-scm
+os.environ['SETUPTOOLS_SCM_PRETEND_VERSION'] = '0.9.8'
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))

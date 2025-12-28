@@ -86,19 +86,19 @@ async def execute_scheduled_job(schedule_id: str) -> Dict[str, Any]:
 
     try:
         if job == "train_model":
-            from ..models.trainer import train_model
+            from models.trainer import train_model
             result = await train_model(**params)
 
         elif job == "run_backtest":
-            from ..backtesting.engine import run_backtest
+            from backtesting.engine import run_backtest
             result = await run_backtest(**params)
 
         elif job == "generate_predictions":
-            from .predictor import predict_today
+            from serving.predictor import predict_today
             result = await predict_today(**params)
 
         elif job == "download_data":
-            from ..data_pipeline.market_data import download_crypto_universe
+            from data_pipeline.market_data import download_crypto_universe
             result = await download_crypto_universe(**params)
 
         else:
