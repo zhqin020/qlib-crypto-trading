@@ -8,6 +8,7 @@ import os
 import asyncio
 import sys
 from pathlib import Path
+import json
 
 # Set Qlib version for setuptools-scm
 os.environ['SETUPTOOLS_SCM_PRETEND_VERSION'] = '0.9.8'
@@ -21,20 +22,41 @@ logging.basicConfig(level=logging.INFO)
 from backtesting.engine import run_backtest
 
 
+def load_config():
+    """Load centralized trading parameters"""
+    config_path = Path(__file__).parent.parent / "config" / "trading_params.json"
+    if config_path.exists():
+        with open(config_path, "r") as f:
+            return json.load(f)
+    return {}
+
+
 async def main():
     """Run backtest"""
 
     parser = argparse.ArgumentParser(description="Run a backtest for a trained model")
+    config = load_config()
+    bt_config = config.get("backtest", {})
+
     parser.add_argument("model_id", help="Model identifier to backtest")
     parser.add_argument("--dataset", default="crypto", help="Dataset reference (default: crypto)")
     parser.add_argument("--costs", default="medium", help="Cost level: low, medium, high")
-    parser.add_argument("--rebalance", default="weekly", help="Rebalance frequency (e.g., weekly, monthly)")
+    parser.add_argument("--rebalance", default=bt_config.get("rebalance", "weekly"), help="Rebalance frequency (e.g., weekly, monthly)")
     parser.add_argument("--funding", action="store_true", help="Include funding rate costs")
-    parser.add_argument("--start", dest="start_time", help="Backtest start date (YYYY-MM-DD)")
-    parser.add_argument("--end", dest="end_time", help="Backtest end date (YYYY-MM-DD)")
-    parser.add_argument("--benchmark", help="Benchmark instrument (e.g., BTC)")
-    parser.add_argument("--topk", type=int, default=10, help="Number of assets to hold (default: 10)")
+    parser.add_argument("--start", dest="start_time", default=bt_config.get("start_time"), help="Backtest start date (YYYY-MM-DD)")
+    parser.add_argument("--end", dest="end_time", default=bt_config.get("end_time"), help="Backtest end date (YYYY-MM-DD)")
+    parser.add_argument("--benchmark", default=bt_config.get("benchmark"), help="Benchmark instrument (e.g., BTC)")
+    parser.add_argument("--topk", type=int, default=bt_config.get("topk", 10), help="Number of assets to hold (default: 10)")
     parser.add_argument("--long-short", action="store_true", help="Enable long-short trading (if supported)")
+    
+    # Portfolio subset
+    default_portfolio = bt_config.get("portfolios")
+    if default_portfolio and isinstance(default_portfolio, list):
+        default_portfolio_str = ",".join(default_portfolio)
+    else:
+        default_portfolio_str = None
+    
+    parser.add_argument("--instruments", default=default_portfolio_str, help="Comma-separated list of instruments for backtest")
 
     args = parser.parse_args()
 
@@ -52,6 +74,7 @@ async def main():
         start_time=args.start_time,
         end_time=args.end_time,
         benchmark=args.benchmark,
+        instruments=args.instruments.split(",") if args.instruments else None,
     )
 
     if "error" in result:

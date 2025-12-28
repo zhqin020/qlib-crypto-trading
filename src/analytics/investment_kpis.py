@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from utils.logging_config import get_logger
 import os
 from dataclasses import dataclass
 from datetime import datetime
@@ -11,7 +12,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_TARGET_FILE = PROJECT_ROOT / "config" / "investment_targets.json"

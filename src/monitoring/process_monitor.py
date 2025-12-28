@@ -11,6 +11,7 @@ NO FALLBACKS - Fails immediately on errors
 import asyncio
 import contextlib
 import logging
+from utils.logging_config import get_logger
 import time
 import threading
 import itertools
@@ -24,7 +25,7 @@ from dataclasses import dataclass, field
 import json
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ProcessStatus(Enum):

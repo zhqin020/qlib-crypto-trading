@@ -11,12 +11,13 @@ from typing import Optional, List, Dict, Any, Tuple
 from pathlib import Path
 import importlib
 import logging
+from utils.logging_config import get_logger
 import json
 from datetime import datetime, timezone
 
 from .security import validate_api_key, create_ws_token
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _import_module(module_path: str):

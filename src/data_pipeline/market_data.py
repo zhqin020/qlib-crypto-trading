@@ -5,6 +5,7 @@ Supports multiple exchanges via CCXT
 
 import asyncio
 import logging
+from utils.logging_config import get_logger
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any, TYPE_CHECKING
 
@@ -24,7 +25,7 @@ from .validation import (
     ValidationError
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Exchange instances cache (populated lazily when ccxt is available)
 _exchanges: Dict[str, Any] = {}

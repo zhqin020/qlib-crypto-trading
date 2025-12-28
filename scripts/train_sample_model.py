@@ -16,6 +16,16 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from models.trainer import train_model
 from data_pipeline.features import create_feature_set
+import json
+
+
+def load_config():
+    """Load centralized trading parameters"""
+    config_path = Path(__file__).parent.parent / "config" / "trading_params.json"
+    if config_path.exists():
+        with open(config_path, "r") as f:
+            return json.load(f)
+    return {}
 
 
 async def main():
@@ -24,26 +34,43 @@ async def main():
     print("Training sample model...")
     print()
 
+    config = load_config()
+    data_cfg = config.get("data", {})
+    interval = data_cfg.get("interval", "1h")
+    dataset_ref = f"crypto_{interval}"
+
     # Create feature set
-    print("Creating feature set...")
+    print(f"Creating feature set for {dataset_ref}...")
     feature_set = await create_feature_set(
-        dataset_ref="crypto_1h",
+        dataset_ref=dataset_ref,
         handler="alpha158"
     )
     print(f"Feature set created: {feature_set['name']}")
     print()
 
+    config = load_config()
+    data_cfg = config.get("data", {})
+    bt_cfg = config.get("backtest", {})
+    
+    interval = data_cfg.get("interval", "1h")
+    dataset_ref = f"crypto_{interval}"
+
     # Train model
     print("Training LightGBM model...")
+    
+    # Use config end dates for segments if available
+    bt_start = bt_cfg.get("start_time", "2024-11-01")
+    bt_end = bt_cfg.get("end_time", "2024-12-25")
+    
     result = await train_model(
-        dataset_ref="crypto_1h",
+        dataset_ref=dataset_ref,
         feature_set_ref=feature_set["name"],
         handler="lightgbm",
         params={},
         segments={
             "train": ["2024-03-01", "2024-08-31"],
             "valid": ["2024-09-01", "2024-10-31"],
-            "test": ["2024-11-01", "2024-12-26"]
+            "test": [bt_start, bt_end]
         }
     )
 

@@ -11,6 +11,7 @@ from typing import Optional, List, Dict, Any, Tuple
 from pathlib import Path
 from contextlib import asynccontextmanager
 import logging
+from utils.logging_config import get_logger
 import json
 import asyncio
 import re
@@ -28,7 +29,7 @@ from ui.security import (
     create_ws_token,
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 # Security validation helpers

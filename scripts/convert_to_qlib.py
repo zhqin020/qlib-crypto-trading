@@ -17,13 +17,28 @@ from data_pipeline.official_qlib_converter import convert_crypto_data_official
 
 
 import argparse
+import json
+
+
+def load_config():
+    """Load centralized trading parameters"""
+    config_path = Path(__file__).parent.parent / "config" / "trading_params.json"
+    if config_path.exists():
+        with open(config_path, "r") as f:
+            return json.load(f)
+    return {}
 
 def main():
     """Convert CSV data to Qlib binary format"""
 
+    config = load_config()
+    data_cfg = config.get("data", {})
+    default_freq = data_cfg.get("interval", "1d")
+    default_qlib_dir = f"data/qlib/crypto_{default_freq}"
+
     parser = argparse.ArgumentParser(description="Convert CSV data to Qlib binary format")
-    parser.add_argument("--freq", default="1d", help="Data frequency (1d, 1h, etc.)")
-    parser.add_argument("--qlib_dir", default="data/qlib/crypto", help="Output directory for Qlib data")
+    parser.add_argument("--freq", default=default_freq, help="Data frequency (1d, 1h, etc.)")
+    parser.add_argument("--qlib_dir", default=default_qlib_dir, help="Output directory for Qlib data")
     args = parser.parse_args()
 
     print(f"Converting crypto data to Qlib format (freq={args.freq})...")

@@ -3,12 +3,13 @@ Job scheduling system using RRULE
 """
 
 import logging
+from utils.logging_config import get_logger
 from typing import Dict, Any, Optional
 from datetime import datetime
 from pathlib import Path
 import json
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Global scheduler registry
 SCHEDULES = {}

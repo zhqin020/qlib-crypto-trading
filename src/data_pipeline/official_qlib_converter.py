@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional
 import logging
+from utils.logging_config import get_logger
 import sys
 from contextlib import contextmanager
 import os
@@ -21,7 +22,7 @@ from .validation import (
     ValidationError
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _get_available_memory_mb() -> Optional[float]:

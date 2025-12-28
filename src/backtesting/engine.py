@@ -4,10 +4,11 @@ Backtesting engine with crypto-specific features
 
 import asyncio
 import logging
+from utils.logging_config import get_logger
 import json
 import pickle
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import datetime
 import pandas as pd
 import numpy as np
@@ -18,7 +19,7 @@ from monitoring.process_monitor import monitor, ProcessStatus
 from utils.datasets import load_snapshot_metadata
 from utils.qlib_state import qlib_init_context
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 try:  # Optional dependency: qlib
     from qlib.backtest import backtest as _QLIB_backtest
@@ -60,6 +61,7 @@ async def run_backtest(
     start_time: Optional[str] = None,
     end_time: Optional[str] = None,
     benchmark: Optional[str] = None,
+    instruments: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
     Run backtest using trained model
@@ -73,6 +75,7 @@ async def run_backtest(
         start_time: Inclusive start date for the backtest window (YYYY-MM-DD)
         end_time: Inclusive end date for the backtest window (YYYY-MM-DD)
         benchmark: Benchmark instrument (e.g., BTC_USDT)
+        instruments: List of instruments to include in backtest (default: all)
 
     Returns:
         Backtest results with performance metrics
@@ -257,6 +260,15 @@ async def run_backtest(
                 else:
                     from data_pipeline.features import get_alpha158_config
                     handler_config = get_alpha158_config()
+
+                # Override instruments if provided
+                if instruments:
+                    # Qlib expects symbols without /USDT in many providers, 
+                    # but our converter uses lowercase and no slash.
+                    # Standardizing to what the Qlib data path contains.
+                    clean_instruments = [i.split('/')[0].lower() for i in instruments]
+                    handler_config["kwargs"]["instruments"] = clean_instruments
+                    logger.info(f"Backtest limited to {len(clean_instruments)} instruments: {clean_instruments}")
 
                 # Add fit range from model metadata to handler config
                 fit_range = model_meta.get("segments", {}).get("train")

@@ -8,18 +8,13 @@ Or via the MCP config in Claude.
 import asyncio
 import sys
 import logging
+from utils.logging_config import get_logger
 import mcp.server.stdio
 
 from .server import app
 
-# Configure logging to stderr
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    stream=sys.stderr,
-    force=True
-)
-logger = logging.getLogger(__name__)
+# Logging is configured via utils.logging_config on import
+logger = get_logger(__name__)
 
 
 async def main():

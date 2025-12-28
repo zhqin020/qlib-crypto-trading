@@ -4,6 +4,7 @@ MCP Server Implementation for Qlib Crypto Trading Platform
 
 import asyncio
 import logging
+from utils.logging_config import get_logger
 from datetime import datetime, date
 from pathlib import Path
 from typing import Optional, List, Dict, Any
@@ -11,9 +12,8 @@ from mcp.server import Server
 from mcp.types import Tool, TextContent, Resource
 import json
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Logger initialized via centralized config
+logger = get_logger(__name__)
 
 # Initialize MCP server
 app = Server("qlib-crypto-trading")

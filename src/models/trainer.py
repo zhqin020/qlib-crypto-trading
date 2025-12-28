@@ -4,6 +4,7 @@ Model training system supporting multiple ML algorithms
 
 import asyncio
 import logging
+from utils.logging_config import get_logger
 import json
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple
@@ -18,7 +19,7 @@ from utils.datasets import load_snapshot_metadata
 from utils.qlib_state import qlib_init_context
 from utils.torch_stub import ensure_torch_available
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 # Ensure optional torch dependency is importable during tests.

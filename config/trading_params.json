@@ -1,0 +1,46 @@
+{
+    "logging": {
+        "level": "INFO",
+        "log_file": "glib-crypto.log",
+        "log_base": "glib-crypto",
+        "max_index": 9
+    },
+    "data": {
+        "interval": "1h",
+        "start_time": "2024-01-01",
+        "end_time": "2024-12-26",
+        "symbols": [
+            "BTC/USDT",
+            "ETH/USDT",
+            "BNB/USDT",
+            "SOL/USDT",
+            "XRP/USDT",
+            "ADA/USDT",
+            "AVAX/USDT",
+            "DOT/USDT",
+            "LINK/USDT",
+            "LTC/USDT",
+            "PEPE/USDT",
+            "SUI/USDT"
+        ]
+    },
+    "backtest": {
+        "start_time": "2024-1-01",
+        "end_time": "2024-12-25",
+        "topk": 5,
+        "portfolios": [
+            "BTC/USDT",
+            "ETH/USDT",
+            "BNB/USDT",
+            "SOL/USDT",
+            "XRP/USDT",
+            "ADA/USDT",
+            "AVAX/USDT",
+            "DOT/USDT",
+            "LINK/USDT",
+            "LTC/USDT"
+        ],
+        "rebalance": "1h",
+        "benchmark": "BTC"
+    }
+}

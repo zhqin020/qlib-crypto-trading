@@ -10,6 +10,7 @@ import time
 import hashlib
 import secrets
 import logging
+from utils.logging_config import get_logger
 from typing import Optional, Dict, Set, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -17,7 +18,7 @@ from fastapi import WebSocket, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import json
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Load API keys from environment
 VALID_API_KEYS = os.getenv("WEBSOCKET_API_KEYS", "").split(",")

@@ -4,6 +4,7 @@ Real-time prediction service
 
 import asyncio
 import logging
+from utils.logging_config import get_logger
 import json
 import os
 import pickle
@@ -18,7 +19,7 @@ from monitoring.process_monitor import monitor, ProcessStatus
 from utils.qlib_state import qlib_init_context
 from utils.datasets import load_snapshot_metadata
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 MAX_DATA_STALENESS_HOURS = int(os.getenv("PREDICTION_MAX_DATA_AGE_HOURS", "24"))

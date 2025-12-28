@@ -5,7 +5,7 @@ import os
 from datetime import datetime, timedelta
 from typing import Optional
 
-from ..data_pipeline.data_refresh import DataRefreshConfig, run_data_refresh
+from data_pipeline.data_refresh import DataRefreshConfig, run_data_refresh
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ class BackgroundTaskManager:
         logger.info("Starting background tasks")
 
         # Load state on startup
-        from ..monitoring.process_monitor import monitor
+        from monitoring.process_monitor import monitor
         try:
             if os.getenv("PYTEST_CURRENT_TEST"):
                 logger.debug("Skipping state load during tests")
@@ -72,14 +72,14 @@ class BackgroundTaskManager:
 
         self._tasks.clear()
         try:
-            from ..monitoring.process_monitor import monitor
+            from monitoring.process_monitor import monitor
             await monitor.stop_redis_listener()
         except Exception as e:
             logger.error(f"Failed to stop Redis listener: {e}", exc_info=True)
 
     async def _cleanup_old_processes(self):
         """Periodically clean up old completed processes"""
-        from ..monitoring.process_monitor import monitor
+        from monitoring.process_monitor import monitor
 
         while self._running:
             try:
@@ -99,7 +99,7 @@ class BackgroundTaskManager:
 
     async def _auto_save_state(self):
         """Periodically save process state to disk every 5 minutes"""
-        from ..monitoring.process_monitor import monitor
+        from monitoring.process_monitor import monitor
 
         while self._running:
             try:

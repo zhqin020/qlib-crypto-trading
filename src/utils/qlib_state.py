@@ -10,11 +10,12 @@ previous runs. We clear that before each init.
 """
 import asyncio
 import logging
+from .logging_config import get_logger
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Union, Dict, Any, AsyncIterator, Callable
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Global async lock to prevent concurrent qlib initialization
 _init_lock = asyncio.Lock()
