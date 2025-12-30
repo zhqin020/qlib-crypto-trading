@@ -843,6 +843,24 @@ def get_model_config(
                 **params_copy
             },
         },
+        "alstm": {
+            "class": "ALSTM",
+            "module_path": "qlib.contrib.model.pytorch_alstm",
+            "kwargs": {
+                "d_feat": 6,                  # 输入特征维度
+                "hidden_size": 64,            # 隐藏层大小
+                "num_layers": 2,              # 层数
+                "dropout": 0.2,               # Dropout
+                "n_epochs": 100,              # 训练轮数
+                "lr": 0.001,                  # 学习率
+                "batch_size": 512,            # 批次大小
+                "early_stop": 20,             # 早停
+                "loss": "mse",                
+                "optimizer": "adam",
+                "rnn_type": "GRU",            # ALSTM 可选 GRU 或 LSTM 作为基础单元 (GRU 通常更快)
+                **params_copy
+            },
+        },
         "transformer": {
             "class": "Transformer",
             "module_path": "qlib.contrib.model.pytorch_transformer",

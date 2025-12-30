@@ -7,6 +7,8 @@ import os
 import asyncio
 import sys
 from pathlib import Path
+import json
+import argparse
 
 # Set Qlib version for setuptools-scm
 os.environ['SETUPTOOLS_SCM_PRETEND_VERSION'] = '0.9.8'
@@ -16,12 +18,14 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from models.trainer import train_model
 from data_pipeline.features import create_feature_set
-import json
 
 
-def load_config():
-    """Load centralized trading parameters"""
-    config_path = Path(__file__).parent.parent / "config" / "trading_params.json"
+def load_config(config_path: Path = None):
+    """Load centralized trading parameters.
+    If config_path is provided, use it; otherwise default to config/trading_params.json.
+    """
+    if config_path is None:
+        config_path = Path(__file__).parent.parent / "config" / "trading_params.json"
     if config_path.exists():
         with open(config_path, "r") as f:
             return json.load(f)
@@ -29,13 +33,35 @@ def load_config():
 
 
 async def main():
-    """Train a sample LightGBM model"""
+    """Train a sample model"""
 
-    print("Training sample model...")
+    # First pass: parse only --config to load defaults
+    conf_parser = argparse.ArgumentParser(add_help=False)
+    conf_parser.add_argument("--config", default=None)
+    conf_args, _ = conf_parser.parse_known_args()
+    
+    config = load_config(Path(conf_args.config) if conf_args.config else None)
+    
+    # Load default model from config
+    training_cfg = config.get("training", {})
+    default_model = training_cfg.get("model_type", "lightgbm")
+    
+    parser = argparse.ArgumentParser(description="Train a sample model")
+    parser.add_argument("--model", default=default_model, help=f"Model type (lightgbm, xgboost, lstm, transformer). Default: {default_model}")
+    parser.add_argument("--config", default=None, help="Path to custom config JSON file (optional)")
+    args = parser.parse_args()
+    
+    model_type = args.model
+    # Re-load config in case it changed (though it shouldn't have from the first pass)
+    config = load_config(Path(args.config) if args.config else None)
+    
+    print(f"Training sample model with {model_type}...")
     print()
 
-    config = load_config()
     data_cfg = config.get("data", {})
+    bt_cfg = config.get("backtest", {})
+    training_cfg = config.get("training", {})
+    
     interval = data_cfg.get("interval", "1h")
     market_type = data_cfg.get("market_type", "spot")
     mt_suffix = f"_{market_type}" if market_type != "spot" else ""
@@ -45,40 +71,19 @@ async def main():
     print(f"Creating feature set for {dataset_ref}...")
     feature_set = await create_feature_set(
         dataset_ref=dataset_ref,
-        handler="alpha158"
+        handler=training_cfg.get("feature_handler", "alpha158")
     )
     print(f"Feature set created: {feature_set['name']}")
     print()
 
-    config = load_config()
-    data_cfg = config.get("data", {})
-    bt_cfg = config.get("backtest", {})
-    
-    interval = data_cfg.get("interval", "1h")
-    market_type = data_cfg.get("market_type", "spot")
-    
-    import argparse
-    
-    # Load default model from config
-    training_cfg = config.get("training", {})
-    default_model = training_cfg.get("model_type", "lightgbm")
-    
-    parser = argparse.ArgumentParser(description="Train a sample model")
-    parser.add_argument("--model", default=default_model, help=f"Model type (lightgbm, xgboost, lstm, transformer). Default: {default_model}")
-    args = parser.parse_args()
-    model_type = args.model
-    
     # Prepare training parameters
-    
     # 1. Get model-specific parameters
-    # Looks for params in 'training.models.<model_type>'
     model_params = training_cfg.get("models", {}).get(model_type, {})
     
     # 2. Start with a copy of these params
     params = model_params.copy()
     
     # 3. Add global training options (excluding structural keys)
-    # This allows global overrides like "device" or "n_epochs" if set at root level
     for k, v in training_cfg.items():
         if k not in ["model_type", "feature_handler", "models"]:
             params[k] = v
@@ -86,10 +91,6 @@ async def main():
     # Ensure device is set (defaults to auto if not in config)
     if "device" not in params:
         params["device"] = "auto"
-
-    # Construct dataset_ref with market_type suffix if not spot
-    mt_suffix = f"_{market_type}" if market_type != "spot" else ""
-    dataset_ref = f"crypto_{interval}{mt_suffix}"
 
     # Train model
     print(f"Training {model_type} model...")

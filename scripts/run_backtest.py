@@ -22,9 +22,12 @@ logging.basicConfig(level=logging.INFO)
 from backtesting.engine import run_backtest
 
 
-def load_config():
-    """Load centralized trading parameters"""
-    config_path = Path(__file__).parent.parent / "config" / "trading_params.json"
+def load_config(config_path: Path = None):
+    """Load centralized trading parameters.
+    If config_path is provided, use it; otherwise default to config/trading_params.json.
+    """
+    if config_path is None:
+        config_path = Path(__file__).parent.parent / "config" / "trading_params.json"
     if config_path.exists():
         with open(config_path, "r") as f:
             return json.load(f)
@@ -34,10 +37,17 @@ def load_config():
 async def main():
     """Run backtest"""
 
-    parser = argparse.ArgumentParser(description="Run a backtest for a trained model")
-    config = load_config()
+    # First pass: parse only --config to load defaults
+    conf_parser = argparse.ArgumentParser(add_help=False)
+    conf_parser.add_argument("--config", default=None)
+    conf_args, _ = conf_parser.parse_known_args()
+    
+    config = load_config(Path(conf_args.config) if conf_args.config else None)
     bt_config = config.get("backtest", {})
 
+    # Second pass: parse everything
+    parser = argparse.ArgumentParser(description="Run a backtest for a trained model")
+    parser.add_argument("--config", default=None, help="Path to custom config JSON file (optional)")
     parser.add_argument("model_id", nargs="?", help="Model identifier to backtest. If omitted, uses latest model of configured type.")
     parser.add_argument("--dataset", default="crypto", help="Dataset reference (default: crypto)")
     parser.add_argument("--costs", default="medium", help="Cost level: low, medium, high")

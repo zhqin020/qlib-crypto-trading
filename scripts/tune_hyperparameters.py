@@ -34,9 +34,14 @@ SEARCH_SPACE = {
         "n_estimators": [300, 500]
     },
     "lstm": {
-        "learning_rate": [0.001, 0.0001],
+        "lr": [0.001, 0.0001],
         "hidden_size": [64, 128],
         "dropout": [0.2, 0.4]
+    },
+    "alstm": {
+        "lr": [0.001, 0.0001],
+        "dropout": [0.2, 0.4],
+        "rnn_type": ["GRU", "LSTM"]
     }
 }
 
