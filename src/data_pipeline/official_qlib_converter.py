@@ -299,6 +299,64 @@ def prepare_normalized_csv(
                 f"from {first_date.strftime('%Y-%m-%d')} to {last_date.strftime('%Y-%m-%d')}"
             )
 
+    # Generate data coverage summary
+    logger.info("\n" + "="*80)
+    logger.info("DATA COVERAGE SUMMARY")
+    logger.info("="*80)
+    
+    # Find the overall date range across all symbols
+    all_dates = {}
+    for symbol, file_path in normalized_files.items():
+        df = pd.read_csv(file_path)
+        df['date'] = pd.to_datetime(df['date'])
+        all_dates[symbol] = {
+            'start': df['date'].min(),
+            'end': df['date'].max(),
+            'count': len(df)
+        }
+    
+    if all_dates:
+        global_start = min(d['start'] for d in all_dates.values())
+        global_end = max(d['end'] for d in all_dates.values())
+        
+        logger.info(f"Overall date range: {global_start.strftime('%Y-%m-%d')} to {global_end.strftime('%Y-%m-%d')}")
+        logger.info("\nPer-symbol coverage:")
+        logger.info(f"{'Symbol':<10} {'Start Date':<12} {'End Date':<12} {'Records':<10} {'Coverage':<10} {'Missing Days'}")
+        logger.info("-" * 80)
+        
+        for symbol in sorted(all_dates.keys()):
+            info = all_dates[symbol]
+            # Calculate expected vs actual records
+            if freq == "1d":
+                expected_days = (global_end - global_start).days + 1
+                actual_days = (info['end'] - info['start']).days + 1
+            else:
+                # For hourly data, approximate
+                expected_days = (global_end - global_start).days + 1
+                actual_days = (info['end'] - info['start']).days + 1
+            
+            coverage_pct = (actual_days / expected_days * 100) if expected_days > 0 else 0
+            missing_start = (info['start'] - global_start).days
+            missing_end = (global_end - info['end']).days
+            
+            missing_info = ""
+            if missing_start > 0:
+                missing_info += f"Missing first {missing_start} days"
+            if missing_end > 0:
+                if missing_info:
+                    missing_info += ", "
+                missing_info += f"Missing last {missing_end} days"
+            if not missing_info:
+                missing_info = "Complete"
+            
+            logger.info(
+                f"{symbol:<10} {info['start'].strftime('%Y-%m-%d'):<12} "
+                f"{info['end'].strftime('%Y-%m-%d'):<12} {info['count']:<10} "
+                f"{coverage_pct:>6.1f}%    {missing_info}"
+            )
+        
+        logger.info("="*80 + "\n")
+
     return normalized_files
 
 
@@ -455,7 +513,8 @@ def run_official_dump_bin(
 def convert_crypto_data_official(
     csv_dir: str,
     qlib_dir: str,
-    freq: str = "1d"
+    freq: str = "1d",
+    market_type: str = "spot"
 ) -> Dict[str, any]:
     """
     Convert crypto CSV to Qlib format using OFFICIAL tools only
@@ -464,6 +523,7 @@ def convert_crypto_data_official(
         csv_dir: Directory containing CSV files
         qlib_dir: Output directory for Qlib format
         freq: Frequency string (1d, 1h, etc.)
+        market_type: Market type (spot, future, etc.)
 
     Returns:
         Result dictionary with conversion metadata
@@ -489,7 +549,7 @@ def convert_crypto_data_official(
     if not re.match(r'^[0-9]{0,2}[mhd]$', freq.lower()) and freq.lower() not in ["day", "1h", "15min", "5min", "1min"]:
         raise ValueError(f"Invalid frequency format: {freq}. Expected format: 1d, 1h, 15m, etc.")
 
-    logger.info(f"Converting crypto data: csv_dir={csv_dir}, qlib_dir={qlib_dir}, freq={freq}")
+    logger.info(f"Converting crypto data: csv_dir={csv_dir}, qlib_dir={qlib_dir}, freq={freq}, market_type={market_type}")
 
     csv_path = Path(csv_dir)
     qlib_path = Path(qlib_dir)
@@ -507,16 +567,37 @@ def convert_crypto_data_official(
         raise ValueError(f"No CSV files found in {csv_dir}")
 
     # Filter for crypto only
-    # Match frequency in filename (e.g., BTC_USDT_1h.csv matches freq='1h')
+    # Match frequency and market_type in filename
     pattern = freq.lower()
-    crypto_csv_files = [f for f in csv_files if pattern in f.name.lower()]
-    if not crypto_csv_files:
-        raise ValueError(f"No crypto CSV files found matching frequency {freq} in {csv_dir}")
+    suffix_pattern = f"_{market_type.lower()}" if market_type.lower() != "spot" else ""
+    
+    crypto_csv_files = []
+    for f in csv_files:
+        filename = f.name.lower()
+        if pattern in filename:
+            # If spot, check that no other market type is in the name
+            if market_type.lower() == "spot":
+                is_other = False
+                for mt in ["future", "swap", "margin"]:
+                    if f"_{mt}" in filename:
+                        is_other = True
+                        break
+                if not is_other:
+                    crypto_csv_files.append(f)
+            # If specific market type, check for that suffix
+            elif suffix_pattern in filename:
+                crypto_csv_files.append(f)
 
-    logger.info(f"Found {len(crypto_csv_files)} crypto CSV files for {freq} frequency")
+    if not crypto_csv_files:
+        msg = f"No crypto CSV files found matching frequency {freq} and market_type {market_type} in {csv_dir}"
+        logger.error(msg)
+        raise ValueError(msg)
+
+    logger.info(f"Found {len(crypto_csv_files)} crypto CSV files for {freq} {market_type}")
 
     # Step 1: Normalize CSVs to Qlib format
-    normalized_dir = qlib_path.parent / f"normalized_temp_{freq}"
+    mt_suffix = f"_{market_type}" if market_type != "spot" else ""
+    normalized_dir = qlib_path.parent / f"normalized_temp_{freq}{mt_suffix}"
     normalized_files = prepare_normalized_csv(crypto_csv_files, normalized_dir, freq=freq)
 
     # Map our freq to Qlib's dump_bin freq

@@ -289,6 +289,9 @@ async def download_crypto_universe(
     Raises:
         ValidationError: If input validation fails
     """
+    import pandas as pd
+    import ccxt
+    from tqdm import tqdm
     from pathlib import Path
 
     try:
@@ -306,17 +309,20 @@ async def download_crypto_universe(
         output_path.mkdir(parents=True, exist_ok=True)
 
         all_data = {}
-
-        for symbol in symbols:
+        
+        pbar = tqdm(symbols, desc="Downloading Market Data", unit="symbol")
+        for symbol in pbar:
             try:
-                logger.info(f"Downloading {symbol}...")
+                pbar.set_postfix({"symbol": symbol})
+                # logger.info(f"Downloading {symbol}...") # Redundant with pbar
                 df = await get_historical(symbol, start_date, end_date, interval, provider, market_type)
 
                 # Normalize symbol name for filename
                 symbol_name = symbol.replace("/", "_")
 
                 # Save to CSV
-                csv_path = output_path / f"{symbol_name}_{interval}.csv"
+                suffix = f"_{market_type}" if market_type != "spot" else ""
+                csv_path = output_path / f"{symbol_name}_{interval}{suffix}.csv"
                 df.to_csv(csv_path)
                 logger.info(f"Saved {symbol} to {csv_path}")
 

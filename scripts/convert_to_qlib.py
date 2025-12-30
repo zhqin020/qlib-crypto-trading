@@ -34,20 +34,29 @@ def main():
     config = load_config()
     data_cfg = config.get("data", {})
     default_freq = data_cfg.get("interval", "1d")
-    default_qlib_dir = f"data/qlib/crypto_{default_freq}"
 
     parser = argparse.ArgumentParser(description="Convert CSV data to Qlib binary format")
     parser.add_argument("--freq", default=default_freq, help="Data frequency (1d, 1h, etc.)")
-    parser.add_argument("--qlib_dir", default=default_qlib_dir, help="Output directory for Qlib data")
+    parser.add_argument("--market-type", default=data_cfg.get("market_type", "spot"), help="Market type (spot, future, etc.)")
+    
+    args = parser.parse_args()
+    
+    qlib_dir_suffix = f"_{args.market_type}" if args.market_type != "spot" else ""
+    qlib_dir = f"data/qlib/crypto_{args.freq}{qlib_dir_suffix}"
+    
+    # Allow override via cmd line
+    parser.add_argument("--qlib_dir", default=qlib_dir, help="Output directory for Qlib data")
+    # Re-parse to pick up qlib_dir if provided
     args = parser.parse_args()
 
-    print(f"Converting crypto data to Qlib format (freq={args.freq})...")
+    print(f"Converting crypto data to Qlib format (freq={args.freq}, market_type={args.market_type})...")
     print()
 
     result = convert_crypto_data_official(
         csv_dir="data/raw",
         qlib_dir=args.qlib_dir,
-        freq=args.freq
+        freq=args.freq,
+        market_type=args.market_type
     )
 
     print("\nConversion Summary:")

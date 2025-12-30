@@ -20,18 +20,24 @@ from serving.predictor import predict_today
 async def main():
     """Generate predictions"""
 
-    if len(sys.argv) < 2:
-        print("Usage: python predict.py <model_id>")
-        sys.exit(1)
-
-    model_id = sys.argv[1]
+    import argparse
+    parser = argparse.ArgumentParser(description="Generate predictions")
+    parser.add_argument("model_id", help="Model ID")
+    parser.add_argument("--date", help="Prediction date (YYYY-MM-DD)", default=None)
+    
+    args = parser.parse_args()
+    model_id = args.model_id
+    prediction_date = args.date
 
     print(f"Generating predictions for model: {model_id}")
+    if prediction_date:
+        print(f"Prediction date: {prediction_date}")
     print()
 
     result = await predict_today(
         model_id=model_id,
-        dataset_ref="crypto"
+        dataset_ref="crypto",
+        prediction_date=prediction_date
     )
 
     if "error" in result:

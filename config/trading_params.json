@@ -27,7 +27,7 @@
         ]
     },
     "backtest": {
-        "start_time": "2024-1-01",
+        "start_time": "2023-05-03",
         "end_time": "2025-12-25",
         "topk": 5,
         "portfolios": [

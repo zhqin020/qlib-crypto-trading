@@ -489,20 +489,185 @@ async def run_backtest(
                 
                 # Extract positions to generate order history
                 positions_df = None
-                for freq in ['1day', '1d', 'day', '1week', 'week', '60min', '1h']:
-                    if freq in portfolio_metric_dict:
-                        val = portfolio_metric_dict[freq]
-                        if isinstance(val, tuple):
-                            positions_df = val[1]
-                        break
+                
+                # Debug: Log the structure of portfolio_metric_dict
+                logger.info(f"portfolio_metric_dict type: {type(portfolio_metric_dict)}")
+                if isinstance(portfolio_metric_dict, dict):
+                    logger.info(f"portfolio_metric_dict keys: {list(portfolio_metric_dict.keys())}")
+                
+                # Try different ways to extract positions from portfolio_metric_dict
+                try:
+                    # Method 1: Check if it's a dict with frequency keys
+                    for freq in ['1day', '1d', 'day', '1week', 'week', '60min', '1h', 'hour']:
+                        if freq in portfolio_metric_dict:
+                            val = portfolio_metric_dict[freq]
+                            logger.info(f"Found freq '{freq}' in portfolio_metric_dict, type: {type(val)}")
+                            if isinstance(val, tuple) and len(val) > 1:
+                                # Tuple format: (report, positions_df)
+                                positions_df = val[1]
+                                logger.info(f"Extracted positions_df from tuple, type: {type(positions_df)}")
+                                break
+                            elif isinstance(val, pd.DataFrame):
+                                # Direct DataFrame
+                                positions_df = val
+                                logger.info(f"Found direct DataFrame")
+                                break
+                    
+                    # Method 2: Check if portfolio_metric_dict itself is a tuple
+                    if positions_df is None and isinstance(portfolio_metric_dict, tuple) and len(portfolio_metric_dict) > 1:
+                        positions_df = portfolio_metric_dict[1]
+                        logger.info(f"Extracted positions_df from top-level tuple, type: {type(positions_df)}")
+                    
+                    # Method 3: Look for 'positions' key
+                    if positions_df is None and isinstance(portfolio_metric_dict, dict):
+                        if 'positions' in portfolio_metric_dict:
+                            positions_df = portfolio_metric_dict['positions']
+                            logger.info(f"Found 'positions' key, type: {type(positions_df)}")
+                        elif 'portfolio' in portfolio_metric_dict:
+                            positions_df = portfolio_metric_dict['portfolio']
+                            logger.info(f"Found 'portfolio' key, type: {type(positions_df)}")
+                    
+                except Exception as e:
+                    logger.warning(f"Error extracting positions structure: {e}", exc_info=True)
+                
+                # If positions_df is a dict, try to extract the DataFrame from it
+                if positions_df is not None and isinstance(positions_df, dict):
+                    logger.info(f"positions_df is a dict with {len(positions_df)} keys (first 3: {list(positions_df.keys())[:3]})")
+                    
+                    # Check if keys are Timestamps (date-indexed dict of positions)
+                    first_key = next(iter(positions_df.keys())) if positions_df else None
+                    if first_key is not None and isinstance(first_key, pd.Timestamp):
+                        logger.info("positions_df is a date-indexed dict, converting to DataFrame")
+                        # This is a dict of {date: positions_at_date}
+                        # We need to reconstruct a MultiIndex DataFrame
+                        all_positions = []
+                        for idx, (date, pos_data) in enumerate(positions_df.items()):
+                            if idx < 2:  # Log first 2 entries for debugging
+                                logger.info(f"Date {date}: pos_data type={type(pos_data)}, is_DataFrame={isinstance(pos_data, pd.DataFrame)}, is_dict={isinstance(pos_data, dict)}")
+                            
+                            if isinstance(pos_data, pd.DataFrame):
+                                # Add datetime level to the DataFrame
+                                pos_data = pos_data.copy()
+                                pos_data['datetime'] = date
+                                all_positions.append(pos_data)
+                            elif isinstance(pos_data, dict):
+                                # Dict of {instrument: position_info}
+                                for inst, info in pos_data.items():
+                                    if isinstance(info, dict):
+                                        row = info.copy()
+                                        row['datetime'] = date
+                                        row['instrument'] = inst
+                                        all_positions.append(row)
+                                    elif idx < 2:
+                                        logger.info(f"  Unexpected info type for {inst}: {type(info)}")
+                            else:
+                                # Try to handle Qlib Position objects
+                                try:
+                                    # Strategy: Directly access the .position dictionary
+                                    # This is the most robust method based on introspection
+                                    if hasattr(pos_data, 'position') and isinstance(pos_data.position, dict):
+                                        for inst, val in pos_data.position.items():
+                                            # Skip reserved keys usually found in position dict
+                                            if inst in ['cash', 'now_account_value']:
+                                                continue
+                                                
+                                            count = 0
+                                            price = 0
+                                            
+                                            # Value structure can vary
+                                            if isinstance(val, (int, float)):
+                                                count = val
+                                            elif isinstance(val, tuple):
+                                                # Typically (count, price)
+                                                count = val[0]
+                                                price = val[1] if len(val) > 1 else 0
+                                            elif isinstance(val, dict):
+                                                count = val.get('count', 0) or val.get('amount', 0)
+                                                price = val.get('price', 0)
+                                            
+                                            # If price is missing, try to get it via method (ignoring 'bar' argument error by handling exception)
+                                            if price == 0 and hasattr(pos_data, 'get_stock_price'):
+                                                try:
+                                                    # Try calling without arg first
+                                                    price = pos_data.get_stock_price(inst)
+                                                except:
+                                                    pass
+
+                                            all_positions.append({
+                                                'datetime': date,
+                                                'instrument': inst,
+                                                'count': float(count),
+                                                'price': float(price)
+                                            })
+                                    else:
+                                        # Fallback to get_stock_list if .position is not available/dict
+                                        stock_list = []
+                                        if hasattr(pos_data, 'get_stock_list'):
+                                            stock_list = pos_data.get_stock_list()
+                                        
+                                        for inst in stock_list:
+                                            # Skip special keys
+                                            if inst in ['cash', 'now_account_value']:
+                                                continue
+                                                
+                                            count = 0
+                                            # Try get_stock_amount logic if needed... (simplified here as direct dict usually works)
+                                            try:
+                                                if hasattr(pos_data, 'get_stock_amount'):
+                                                    count = pos_data.get_stock_amount(inst) 
+                                            except: 
+                                                pass
+                                            
+                                            all_positions.append({
+                                                'datetime': date,
+                                                'instrument': inst,
+                                                'count': float(count),
+                                                'price': 0.0
+                                            })
+                                            
+                                except Exception as e:
+                                    if idx < 2:
+                                        logger.warning(f"  Error extracting from Position object: {e}", exc_info=True)
+                        
+                        logger.info(f"Collected {len(all_positions)} position records")
+                        if all_positions:
+                            if isinstance(all_positions[0], pd.DataFrame):
+                                positions_df = pd.concat(all_positions, ignore_index=True)
+                                if 'datetime' in positions_df.columns and 'instrument' in positions_df.columns:
+                                    positions_df = positions_df.set_index(['datetime', 'instrument'])
+                            else:
+                                positions_df = pd.DataFrame(all_positions)
+                                if 'datetime' in positions_df.columns and 'instrument' in positions_df.columns:
+                                    positions_df = positions_df.set_index(['datetime', 'instrument'])
+                            logger.info(f"Converted dict to DataFrame with shape: {positions_df.shape}")
+                        else:
+                            logger.warning("No position records collected from dict")
+                            positions_df = None
+                    else:
+                        # Try common string keys that might contain the positions DataFrame
+                        for key in ['positions', 'portfolio', 'position', 'pos', 'holdings']:
+                            if key in positions_df and isinstance(positions_df[key], pd.DataFrame):
+                                positions_df = positions_df[key]
+                                logger.info(f"Extracted DataFrame from dict key '{key}'")
+                                break
+                        else:
+                            # If no known key found, try the first DataFrame value
+                            for key, val in positions_df.items():
+                                if isinstance(val, pd.DataFrame):
+                                    positions_df = val
+                                    logger.info(f"Extracted DataFrame from dict key '{key}' (first DataFrame found)")
+                                    break
                 
                 orders = []
-                if positions_df is not None:
+                if positions_df is not None and isinstance(positions_df, pd.DataFrame):
                     try:
+                        logger.info(f"Attempting to extract orders from positions_df with shape: {positions_df.shape}")
                         orders = extract_backtest_orders(positions_df)
                         logger.info(f"Extracted {len(orders)} orders from backtest history")
                     except Exception as e:
-                        logger.warning(f"Failed to extract orders: {e}")
+                        logger.warning(f"Failed to extract orders: {e}", exc_info=True)
+                else:
+                    logger.info(f"No valid positions DataFrame found. positions_df type: {type(positions_df)}")
 
                 # Step 6: Calculate metrics
                 await monitor.update_progress(process_id, 85.7, f"Calculating performance metrics", 6)
@@ -794,7 +959,15 @@ def extract_backtest_orders(positions_df: pd.DataFrame) -> List[Dict[str, Any]]:
     Qlib positions_df typically has MultiIndex [datetime, instrument] 
     and columns like ['count', 'price', 'weight', ...].
     """
-    if positions_df is None or positions_df.empty:
+    if positions_df is None:
+        return []
+    
+    # Type check
+    if not isinstance(positions_df, pd.DataFrame):
+        logger.warning(f"positions_df is not a DataFrame, got {type(positions_df)}")
+        return []
+    
+    if positions_df.empty:
         return []
 
     orders = []
@@ -810,10 +983,12 @@ def extract_backtest_orders(positions_df: pd.DataFrame) -> List[Dict[str, Any]]:
                 df = df.reorder_levels(['datetime', 'instrument'])
             else:
                 # If index is not multi-index or levels are unnamed, this might fail
+                logger.warning(f"Unexpected index structure: {df.index.names}")
                 return []
 
         # We need 'count' (quantity) and 'price'
         if 'count' not in df.columns:
+            logger.warning(f"'count' column not found in positions_df. Available columns: {df.columns.tolist()}")
             return []
             
         # Get list of unique instruments
@@ -844,6 +1019,6 @@ def extract_backtest_orders(positions_df: pd.DataFrame) -> List[Dict[str, Any]]:
         orders.sort(key=lambda x: x['datetime'])
         
     except Exception as e:
-        logging.error(f"Error in extract_backtest_orders: {e}")
+        logger.error(f"Error in extract_backtest_orders: {e}", exc_info=True)
         
     return orders

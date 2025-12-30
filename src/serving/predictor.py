@@ -41,7 +41,11 @@ else:
     init_instance_by_config._qlib_missing = True  # type: ignore[attr-defined]
 
 
-async def predict_today(model_id: str, dataset_ref: str) -> Dict[str, Any]:
+async def predict_today(
+    model_id: str,
+    dataset_ref: str,
+    prediction_date: str = None
+) -> Dict[str, Any]:
     """
     Generate predictions for current trading session
 
@@ -85,12 +89,8 @@ async def predict_today(model_id: str, dataset_ref: str) -> Dict[str, Any]:
             if not qlib_dir.exists():
                 logger.error(f"Dataset directory not found: {qlib_dir}")
                 await monitor.fail_process(process_id, f"Dataset '{dataset_ref}' not found at {qlib_dir}")
-                return {
-                    "error": f"Dataset '{dataset_ref}' not found at {qlib_dir}",
-                    "status": "failed",
-                    "dataset": dataset_ref,
-                    "model_id": model_id
-                }
+                await monitor.fail_process(process_id, f"Dataset {dataset_ref} not found")
+                return {"error": f"Dataset {dataset_ref} not found"}
 
             # Validate dataset has required structure
             if not (qlib_dir / "calendars").exists() and not (qlib_dir / "instruments").exists():
@@ -158,8 +158,17 @@ async def predict_today(model_id: str, dataset_ref: str) -> Dict[str, Any]:
                 with open(meta_file) as f:
                     model_meta = json.load(f)
 
-                # Get latest data for prediction
-                today = datetime.now().strftime("%Y-%m-%d")
+                # Use provided date or default to today
+                if prediction_date:
+                    # Basic validation
+                    try:
+                        pd.to_datetime(prediction_date)
+                        today = prediction_date
+                    except:
+                        today = datetime.now().strftime("%Y-%m-%d")
+                        logger.warning(f"Invalid prediction_date '{prediction_date}', falling back to {today}")
+                else:
+                    today = datetime.now().strftime("%Y-%m-%d")
 
                 # Step 4: Load feature configuration
                 await monitor.update_progress(process_id, 57.1, f"Loading feature configuration", 4)

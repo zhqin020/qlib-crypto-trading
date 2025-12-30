@@ -37,7 +37,9 @@ async def main():
     config = load_config()
     data_cfg = config.get("data", {})
     interval = data_cfg.get("interval", "1h")
-    dataset_ref = f"crypto_{interval}"
+    market_type = data_cfg.get("market_type", "spot")
+    mt_suffix = f"_{market_type}" if market_type != "spot" else ""
+    dataset_ref = f"crypto_{interval}{mt_suffix}"
 
     # Create feature set
     print(f"Creating feature set for {dataset_ref}...")
@@ -53,7 +55,11 @@ async def main():
     bt_cfg = config.get("backtest", {})
     
     interval = data_cfg.get("interval", "1h")
-    dataset_ref = f"crypto_{interval}"
+    market_type = data_cfg.get("market_type", "spot")
+    
+    # Construct dataset_ref with market_type suffix if not spot
+    mt_suffix = f"_{market_type}" if market_type != "spot" else ""
+    dataset_ref = f"crypto_{interval}{mt_suffix}"
 
     # Train model
     print("Training LightGBM model...")
