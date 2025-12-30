@@ -1,53 +1,28 @@
 #!/usr/bin/env python3
 """
-Hyperparameter Tuning Script for Qlib Crypto Platform
-Automatically searches for optimal parameters by running training and backtesting loops.
+Hyperparameter Tuning Script for Qlib Crypto Platform (Optuna Edition)
+Uses Bayesian Optimization to find optimal parameters.
 """
 
-import itertools
 import json
 import subprocess
 import re
 import shutil
 import time
+import optuna
+import pandas as pd
 from pathlib import Path
 import logging
+import argparse
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# ==========================================
-# 1. Define Search Space
-# ==========================================
-# Only model-specific parameters will be tuned.
-# Modify lists to expand search space.
-SEARCH_SPACE = {
-    "lightgbm": {
-        "learning_rate": [0.01, 0.05],
-        "num_leaves": [15, 31],
-        "lambda_l2": [0.01, 0.1]
-    },
-    "xgboost": {
-        "learning_rate": [0.01, 0.05],
-        "max_depth": [4, 6],
-        "n_estimators": [300, 500]
-    },
-    "lstm": {
-        "lr": [0.001, 0.0001],
-        "hidden_size": [64, 128],
-        "dropout": [0.2, 0.4]
-    },
-    "alstm": {
-        "lr": [0.001, 0.0001],
-        "dropout": [0.2, 0.4],
-        "rnn_type": ["GRU", "LSTM"]
-    }
-}
-
 CONFIG_PATH = Path("config/trading_params.json")
 BACKUP_PATH = Path("config/trading_params.json.bak")
 BEST_CONFIG_PATH = Path("config/trading_params.best.json")
+HISTORY_PATH = Path("tuning_history.csv")
 
 def load_config():
     with open(CONFIG_PATH, "r") as f:
@@ -69,129 +44,145 @@ def run_command(cmd):
     duration = time.time() - start_time
     return result, duration
 
-def parse_sharpe(output):
-    """Extract Sharpe Ratio from backtest output."""
-    # Matches "Sharpe Ratio: 0.597" or "Sharpe=0.597"
-    match = re.search(r"Sharpe Ratio:\s*([-\d.]+)", output)
-    if match:
-        return float(match.group(1))
+def parse_metrics(output):
+    """Extract metrics from backtest output."""
+    metrics = {
+        "sharpe": -999.0,
+        "annual_return": 0.0,
+        "max_drawdown": 1.0
+    }
     
-    match = re.search(r"Sharpe=([-\d.]+)", output)
-    if match:
-        return float(match.group(1))
-    return -999.0
+    # Sharpe Ratio
+    sharpe_match = re.search(r"Sharpe Ratio:\s*([-\d.]+)", output)
+    if not sharpe_match:
+        sharpe_match = re.search(r"Sharpe=([-\d.]+)", output)
+    if sharpe_match:
+        metrics["sharpe"] = float(sharpe_match.group(1))
+        
+    # Annual Return
+    return_match = re.search(r"Annualized Return:\s*([-\d.]+)%", output)
+    if return_match:
+        metrics["annual_return"] = float(return_match.group(1)) / 100.0
+        
+    # Max Drawdown
+    mdd_match = re.search(r"Max Drawdown:\s*([-\d.]+)%", output)
+    if mdd_match:
+        metrics["max_drawdown"] = float(mdd_match.group(1)) / 100.0
+        
+    return metrics
+
+def objective(trial, model_type):
+    """Optuna objective function."""
+    
+    # 1. Define parameters based on model type
+    params = {}
+    if model_type == "lightgbm":
+        params["learning_rate"] = trial.suggest_float("learning_rate", 0.005, 0.1, log=True)
+        params["num_leaves"] = trial.suggest_int("num_leaves", 7, 127)
+        params["lambda_l2"] = trial.suggest_float("lambda_l2", 1e-4, 10.0, log=True)
+        params["max_depth"] = trial.suggest_int("max_depth", 3, 15)
+    elif model_type == "xgboost":
+        params["learning_rate"] = trial.suggest_float("learning_rate", 0.005, 0.1, log=True)
+        params["max_depth"] = trial.suggest_int("max_depth", 3, 12)
+        params["n_estimators"] = trial.suggest_int("n_estimators", 100, 1000)
+    elif model_type in ["lstm", "alstm"]:
+        params["lr"] = trial.suggest_float("lr", 1e-5, 5e-3, log=True)
+        params["dropout"] = trial.suggest_float("dropout", 0.1, 0.6)
+        params["hidden_size"] = trial.suggest_categorical("hidden_size", [32, 64, 128])
+        if model_type == "alstm":
+            params["rnn_type"] = trial.suggest_categorical("rnn_type", ["GRU", "LSTM"])
+    
+    # 2. Update config
+    current_config = load_config()
+    if "training" not in current_config: current_config["training"] = {}
+    if "models" not in current_config["training"]: current_config["training"]["models"] = {}
+    if model_type not in current_config["training"]["models"]: current_config["training"]["models"][model_type] = {}
+    
+    current_config["training"]["models"][model_type].update(params)
+    current_config["training"]["model_type"] = model_type
+    save_config(current_config)
+    
+    # 3. Train
+    print(f"\n   [Trial {trial.number}] Parameters: {params}")
+    print(f"   Training...", end="", flush=True)
+    train_res, train_time = run_command("python scripts/train_sample_model.py")
+    if train_res.returncode != 0:
+        print(f" FAILED (check logs)")
+        return -999.0
+    print(f" Done ({train_time:.1f}s)")
+        
+    # 4. Backtest
+    print(f"   Backtesting...", end="", flush=True)
+    bt_res, bt_time = run_command("python scripts/run_backtest.py")
+    if bt_res.returncode != 0:
+        print(f" FAILED")
+        return -999.0
+        
+    metrics = parse_metrics(bt_res.stdout)
+    print(f" Done ({bt_time:.1f}s) -> Sharpe: {metrics['sharpe']:.4f}")
+    
+    # Store metrics in trial user attributes
+    trial.set_user_attr("annual_return", metrics["annual_return"])
+    trial.set_user_attr("max_drawdown", metrics["max_drawdown"])
+    
+    return metrics["sharpe"]
 
 def main():
+    parser = argparse.ArgumentParser(description="Hyperparameter Tuning with Optuna")
+    parser.add_argument("--trials", type=int, default=20, help="Number of trials to run")
+    parser.add_argument("--model", type=str, default=None, help="Model type to tune (lightgbm, xgboost, alstm, lstm)")
+    args = parser.parse_args()
+
     if not CONFIG_PATH.exists():
         logger.error(f"{CONFIG_PATH} not found")
         return
 
-    # 1. Backup configuration
+    # Backup configuration
     shutil.copy(CONFIG_PATH, BACKUP_PATH)
     logger.info(f"Backed up config to {BACKUP_PATH}")
 
     try:
         base_config = load_config()
+        model_type = args.model or base_config.get("training", {}).get("model_type", "lightgbm")
         
-        # Determine model type to tune (from current config)
-        training_cfg = base_config.get("training", {})
-        model_type = training_cfg.get("model_type", "lightgbm")
+        logger.info(f"Starting Optuna Optimization for Model: {model_type.upper()}")
+        logger.info(f"Target trials: {args.trials}")
         
-        # Allow override? For now, stick to config.
-        # Ensure we have a search space
-        if model_type not in SEARCH_SPACE:
-            logger.warning(f"No search space defined for '{model_type}'. Defaulting to 'lightgbm' search space.")
-            model_type = "lightgbm"
-            
-        space = SEARCH_SPACE[model_type]
-        keys = list(space.keys())
-        values = list(space.values())
-        combinations = list(itertools.product(*values))
+        study = optuna.create_study(direction="maximize")
+        study.optimize(lambda trial: objective(trial, model_type), n_trials=args.trials)
         
-        logger.info(f"Starting Grid Search for Model: {model_type.upper()}")
-        logger.info(f"Parameters to tune: {keys}")
-        logger.info(f"Total combinations: {len(combinations)}")
-        print("-" * 60)
+        # Save results
+        df = study.trials_dataframe()
+        df.to_csv(HISTORY_PATH, index=False)
+        logger.info(f"Tuning history saved to {HISTORY_PATH}")
         
-        best_sharpe = -float('inf')
-        best_params = None
-        results = []
+        # Report Best
+        print("\n" + "="*60)
+        print("OPTIMIZATION COMPLETE")
+        print(f"Best Sharpe Ratio: {study.best_value:.4f}")
+        print("Best Parameters:")
+        for k, v in study.best_params.items():
+            print(f"  - {k}: {v}")
+            
+        # Update and save best config
+        # We re-load the original config (from backup) to avoid trial-specific changes
+        best_config = load_config()
+        if "training" not in best_config: best_config["training"] = {}
+        if "models" not in best_config["training"]: best_config["training"]["models"] = {}
+        if model_type not in best_config["training"]["models"]: best_config["training"]["models"][model_type] = {}
         
-        # 2. Iterate through combinations
-        for i, combo in enumerate(combinations):
-            params = dict(zip(keys, combo))
-            step_str = f"[{i+1}/{len(combinations)}]"
-            print(f"{step_str} Testing Params: {params}")
-            
-            # Update configuration logic for nested structure
-            current_config = load_config()
-            if "training" not in current_config:
-                current_config["training"] = {}
-            if "models" not in current_config["training"]:
-                current_config["training"]["models"] = {}
-            if model_type not in current_config["training"]["models"]:
-                current_config["training"]["models"][model_type] = {}
-                
-            # Update specific model params
-            current_config["training"]["models"][model_type].update(params)
-            
-            # Ensure model_type is set correctly
-            current_config["training"]["model_type"] = model_type
-            
-            save_config(current_config)
-            
-            # A. Training Phase
-            print(f"       Training...", end="", flush=True)
-            train_res, train_time = run_command("python scripts/train_sample_model.py")
-            
-            if train_res.returncode != 0:
-                print(f" \033[91mFAILED\033[0m")
-                logger.error(f"Training failed:\n{train_res.stderr[-500:]}")
-                continue
-            else:
-                print(f" Done ({train_time:.1f}s)")
-                
-            # B. Backtesting Phase
-            print(f"       Backtesting...", end="", flush=True)
-            # Run without args to let it auto-pick the latest model we just trained
-            bt_res, bt_time = run_command("python scripts/run_backtest.py")
-            
-            if bt_res.returncode != 0:
-                print(f" \033[91mFAILED\033[0m")
-                logger.error(f"Backtest failed:\n{bt_res.stderr[-500:]}")
-                continue
-            
-            sharpe = parse_sharpe(bt_res.stdout)
-            print(f" Done ({bt_time:.1f}s) -> Sharpe: \033[1m{sharpe:.4f}\033[0m")
-            
-            # Record result
-            results.append({
-                "params": params,
-                "sharpe": sharpe
-            })
-            
-            if sharpe > best_sharpe:
-                best_sharpe = sharpe
-                best_params = params
-                print(f"       \033[92m>>> NEW BEST FOUND! <<<\033[0m")
-                
-                # Save best config to a separate file
-                save_config(current_config, BEST_CONFIG_PATH)
-
-        # 3. Report Results
-        print("=" * 60)
-        print("Tuning Complete")
-        print(f"Best Sharpe Ratio: {best_sharpe:.4f}")
-        print(f"Best Parameters: {best_params}")
+        best_config["training"]["models"][model_type].update(study.best_params)
+        best_config["training"]["model_type"] = model_type
+        save_config(best_config, BEST_CONFIG_PATH)
         print(f"Best configuration saved to: {BEST_CONFIG_PATH}")
-        print("=" * 60)
+        print("="*60 + "\n")
         
     except KeyboardInterrupt:
         print("\nTuning interrupted by user.")
     except Exception as e:
         logger.error(f"An error occurred: {e}", exc_info=True)
     finally:
-        # 4. Restore original configuration
+        # Restore original configuration
         if BACKUP_PATH.exists():
             shutil.move(BACKUP_PATH, CONFIG_PATH)
             logger.info(f"Restored original configuration from {BACKUP_PATH}")
