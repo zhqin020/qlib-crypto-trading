@@ -49,7 +49,10 @@ def parse_metrics(output):
     metrics = {
         "sharpe": -999.0,
         "annual_return": 0.0,
-        "max_drawdown": 1.0
+        "max_drawdown": 1.0,
+        "sortino": -999.0,
+        "calmar": -999.0,
+        "win_rate": 0.0
     }
     
     # Sharpe Ratio
@@ -68,8 +71,44 @@ def parse_metrics(output):
     mdd_match = re.search(r"Max Drawdown:\s*([-\d.]+)%", output)
     if mdd_match:
         metrics["max_drawdown"] = float(mdd_match.group(1)) / 100.0
+
+    # Sortino Ratio
+    sortino_match = re.search(r"Sortino Ratio:\s*([-\d.]+)", output)
+    if sortino_match:
+        metrics["sortino"] = float(sortino_match.group(1))
+
+    # Calmar Ratio
+    calmar_match = re.search(r"Calmar Ratio:\s*([-\d.]+)", output)
+    if calmar_match:
+        metrics["calmar"] = float(calmar_match.group(1))
+
+    # Win Rate
+    win_match = re.search(r"Win Rate:\s*([-\d.]+)%", output)
+    if win_match:
+        metrics["win_rate"] = float(win_match.group(1)) / 100.0
         
     return metrics
+
+def calculate_composite_score(metrics):
+    """Calculate Weighted Performance Score (WPS)"""
+    # 1. Base Score Components
+    sharpe_score = max(0, metrics["sharpe"]) * 0.40
+    sortino_score = max(0, metrics["sortino"]) * 0.15
+    calmar_score = max(0, metrics["calmar"]) * 0.10
+    win_rate_score = (metrics["win_rate"] / 0.5) * 0.10
+    
+    composite = sharpe_score + sortino_score + calmar_score + win_rate_score
+    
+    # 2. Risk Penalties
+    mdd = metrics["max_drawdown"]
+    if mdd > 0.50:
+        return -999.0 # Hard disqualify for 50% drawdown
+    
+    penalty = 0.0
+    if mdd > 0.20:
+        penalty = (mdd - 0.20) * 2.0 # -0.2 score for every 10% past 20% MDD
+        
+    return composite - penalty
 
 def objective(trial, model_type):
     """Optuna objective function."""
@@ -119,13 +158,18 @@ def objective(trial, model_type):
         return -999.0
         
     metrics = parse_metrics(bt_res.stdout)
-    print(f" Done ({bt_time:.1f}s) -> Sharpe: {metrics['sharpe']:.4f}")
+    wps_score = calculate_composite_score(metrics)
+    print(f" Done ({bt_time:.1f}s) -> Sharpe: {metrics['sharpe']:.3f}, WPS: {wps_score:.4f}")
     
     # Store metrics in trial user attributes
+    trial.set_user_attr("sharpe", metrics["sharpe"])
     trial.set_user_attr("annual_return", metrics["annual_return"])
     trial.set_user_attr("max_drawdown", metrics["max_drawdown"])
+    trial.set_user_attr("sortino", metrics["sortino"])
+    trial.set_user_attr("calmar", metrics["calmar"])
+    trial.set_user_attr("win_rate", metrics["win_rate"])
     
-    return metrics["sharpe"]
+    return wps_score
 
 def main():
     parser = argparse.ArgumentParser(description="Hyperparameter Tuning with Optuna")
@@ -158,8 +202,14 @@ def main():
         
         # Report Best
         print("\n" + "="*60)
-        print("OPTIMIZATION COMPLETE")
-        print(f"Best Sharpe Ratio: {study.best_value:.4f}")
+        print("OPTIMIZATION COMPLETE (WPS Based)")
+        print(f"Best Composite Score (WPS): {study.best_value:.4f}")
+        
+        # Extract additional attributes for the best trial
+        best_trial = study.best_trial
+        print(f"Best Sharpe Ratio: {best_trial.user_attrs.get('sharpe', 0):.3f}")
+        print(f"Best Max Drawdown: {best_trial.user_attrs.get('max_drawdown', 0)*100:.2f}%")
+        
         print("Best Parameters:")
         for k, v in study.best_params.items():
             print(f"  - {k}: {v}")
