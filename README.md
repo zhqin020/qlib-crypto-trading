@@ -94,7 +94,8 @@ docker-compose logs -f api
 python scripts/download_sample_data.py
 ```
 
-This downloads historical data for the top 10 cryptocurrencies (BTC, ETH, BNB, etc.).
+This downloads historical data for the top cryptocurrencies configured in `config/trading_params.json`.
+Use `--provider` and `--market-type` (spot/future/swap) to control the data source and type.
 Use `--start`/`--end` flags to control the window (defaults to the last ~2 years).
 
 #### 2. Convert to Qlib Format
@@ -320,7 +321,8 @@ curl -X POST http://localhost:5100/api/data/download \
     "symbols": ["BTC/USDT", "ETH/USDT"],
     "start_date": "2023-01-01",
     "end_date": "2024-12-31",
-    "interval": "1d"
+    "interval": "1d",
+    "market_type": "future"
   }'
 ```
 

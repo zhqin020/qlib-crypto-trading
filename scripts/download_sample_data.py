@@ -47,6 +47,7 @@ async def main(args: argparse.Namespace):
         end_date=args.end_date,
         interval=args.interval,
         provider=args.provider,
+        market_type=args.market_type,
         output_dir=args.output_dir,
     )
 
@@ -81,7 +82,8 @@ if __name__ == "__main__":
     parser.add_argument("--start", dest="start_date", default=default_start_cfg or default_start, help="Inclusive start date (YYYY-MM-DD)")
     parser.add_argument("--end", dest="end_date", default=default_end_cfg or default_end, help="Inclusive end date (YYYY-MM-DD)")
     parser.add_argument("--interval", default=data_config.get("interval", "1d"), help="Candle interval (e.g., 1d, 1h)")
-    parser.add_argument("--provider", default="binance", help="Data provider identifier")
+    parser.add_argument("--provider", default=data_config.get("exchange", "binance"), help="Data provider identifier (e.g., binance, kraken)")
+    parser.add_argument("--market-type", dest="market_type", default=data_config.get("market_type", "spot"), help="Market type (spot, future, swap)")
     parser.add_argument("--output-dir", default="data/raw", help="Directory to store downloaded CSV files")
 
     parsed_args = parser.parse_args()

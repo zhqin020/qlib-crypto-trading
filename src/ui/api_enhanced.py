@@ -324,6 +324,7 @@ class DataDownloadRequest(BaseModel):
     end_date: str
     interval: str = "1d"
     provider: str = "binance"
+    market_type: str = "spot"
 
 class TrainModelRequest(BaseModel):
     dataset: str = Field(..., min_length=1, max_length=100)
@@ -722,7 +723,8 @@ async def download_data(request: DataDownloadRequest):
                 start_date=request.start_date,
                 end_date=request.end_date,
                 interval=request.interval,
-                provider=request.provider
+                provider=request.provider,
+                market_type=request.market_type
             )
 
             await monitor.complete_process(process_id, {

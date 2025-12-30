@@ -111,6 +111,14 @@ def setup_logging() -> logging.Logger:
     logger.info(f"Logging initialized with level: {log_level_str}")
     logger.info(f"Current log file: {log_path.name}")
     
+    # Log the full command line for traceability
+    try:
+        if hasattr(sys, 'argv') and sys.argv:
+            cmd_line = " ".join(sys.argv)
+            logger.info(f"Command line: {cmd_line}")
+    except Exception:
+        pass
+
     return logger
 
 def get_logger(name: Optional[str] = None) -> logging.Logger:

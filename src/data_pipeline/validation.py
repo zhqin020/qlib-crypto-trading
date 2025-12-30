@@ -421,3 +421,37 @@ def validate_provider(provider: str) -> str:
 
     logger.debug(f"Provider validated: {provider}")
     return provider
+
+
+def validate_market_type(market_type: str) -> str:
+    """
+    Validate market type (spot, future, swap, etc.)
+
+    Args:
+        market_type: Market type string
+
+    Returns:
+        Validated market type (lowercase)
+
+    Raises:
+        ValidationError: If validation fails
+    """
+    if not market_type:
+        return "spot"
+
+    if not isinstance(market_type, str):
+        raise ValidationError("Market type must be a string")
+
+    market_type = market_type.lower().strip()
+
+    # Valid types supported by CCXT
+    valid_types = {"spot", "future", "swap", "margin"}
+
+    if market_type not in valid_types:
+        raise ValidationError(
+            f"Invalid market type: {market_type}. "
+            f"Valid types: {sorted(valid_types)}"
+        )
+
+    logger.debug(f"Market type validated: {market_type}")
+    return market_type

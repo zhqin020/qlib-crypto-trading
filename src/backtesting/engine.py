@@ -401,28 +401,68 @@ async def run_backtest(
                 logger.info(f"Running backtest for model {model_id} with costs={costs}...")
 
                 # Pre-fetch benchmark to avoid resampling issues in Qlib
+                # provide a returns series directly to avoid Qlib's internal frequency resolution errors
+                benchmark_to_pass = resolved_benchmark
                 try:
                     from qlib.data import D
-                    logger.info(f"Pre-fetching benchmark {resolved_benchmark} at frequency {qlib_handler_freq}...")
-                    benchmark_df = await asyncio.to_thread(
-                        D.features, 
-                        [resolved_benchmark], 
-                        ['$close'], 
-                        start_time=resolved_start_str, 
-                        end_time=resolved_end_str, 
-                        freq=qlib_handler_freq
-                    )
-                    if not benchmark_df.empty:
-                        # Convert to returns for Qlib benchmark
-                        benchmark_series = benchmark_df['$close'].groupby(level='datetime').first()
+                    
+                    # 1. Clean the benchmark symbol (e.g., BTC/USDT -> BTC)
+                    # Use uppercase and strip common suffixes
+                    base_symbol = resolved_benchmark.split('/')[0].split('_')[0].upper()
+                    
+                    # 2. Try several fallback options
+                    targets = []
+                    if base_symbol: targets.append(base_symbol)
+                    if resolved_benchmark != base_symbol: targets.append(resolved_benchmark)
+                    if "BTC" not in targets: targets.append("BTC")
+                    if "ETH" not in targets: targets.append("ETH")
+                    
+                    # Also try the first instrument in the dataset as a last resort
+                    try:
+                        all_insts = await asyncio.to_thread(D.instruments, market='all')
+                        first_inst = next(iter(all_insts)) if all_insts else None
+                        if first_inst and first_inst not in targets:
+                            targets.append(first_inst)
+                    except:
+                        pass
+
+                    found_df = None
+                    final_target = None
+                    for target in targets:
+                        try:
+                            df = await asyncio.to_thread(
+                                D.features, 
+                                [target], 
+                                ['$close'], 
+                                start_time=resolved_start_str, 
+                                end_time=resolved_end_str, 
+                                freq=qlib_handler_freq
+                            )
+                            if not df.empty:
+                                found_df = df
+                                final_target = target
+                                break
+                        except:
+                            continue
+
+                    if found_df is not None and not found_df.empty:
+                        # Convert price to returns for Qlib benchmark configuration
+                        # This works best with Qlib's internal account logic
+                        benchmark_series = found_df['$close'].groupby(level='datetime').first()
                         benchmark_returns = benchmark_series.sort_index().pct_change().fillna(0)
                         benchmark_to_pass = pd.Series(benchmark_returns)
-                        logger.info(f"Benchmark pre-fetched: {len(benchmark_to_pass)} points, type={type(benchmark_to_pass)}")
+                        logger.info(f"Using pre-fetched benchmark '{final_target}' ({len(benchmark_to_pass)} points)")
                     else:
-                        benchmark_to_pass = resolved_benchmark
-                        logger.warning(f"Benchmark {resolved_benchmark} returned empty data; falling back to string")
+                        # Fallback: if we can't find ANY data for ANY target, 
+                        # create a zero-return series to avoid Qlib's problematic string-based resolution
+                        logger.warning(f"Could not find data for any benchmark targets {targets}. Using zero returns.")
+                        if not predictions.empty:
+                            dates = predictions.index.get_level_values('datetime').unique().sort_values()
+                            benchmark_to_pass = pd.Series(0.0, index=dates)
+                        else:
+                            benchmark_to_pass = resolved_benchmark # Last resort fallback to string
                 except Exception as b_err:
-                    logger.warning(f"Error pre-fetching benchmark: {b_err}. Falling back to string.")
+                    logger.warning(f"Error resolving benchmark: {b_err}. Falling back to string '{resolved_benchmark}'.")
                     benchmark_to_pass = resolved_benchmark
 
                 def run_backtest_call():
@@ -446,10 +486,23 @@ async def run_backtest(
                         qlib_logger.setLevel(old_level)
 
                 portfolio_metric_dict, indicator_dict = await asyncio.to_thread(run_backtest_call)
-                print(f"DEBUG: PM keys: {list(portfolio_metric_dict.keys())}")
-                for k, v in portfolio_metric_dict.items():
-                    if isinstance(v, pd.DataFrame):
-                        print(f"DEBUG: Report {k} shape: {v.shape}\n{v.head()}")
+                
+                # Extract positions to generate order history
+                positions_df = None
+                for freq in ['1day', '1d', 'day', '1week', 'week', '60min', '1h']:
+                    if freq in portfolio_metric_dict:
+                        val = portfolio_metric_dict[freq]
+                        if isinstance(val, tuple):
+                            positions_df = val[1]
+                        break
+                
+                orders = []
+                if positions_df is not None:
+                    try:
+                        orders = extract_backtest_orders(positions_df)
+                        logger.info(f"Extracted {len(orders)} orders from backtest history")
+                    except Exception as e:
+                        logger.warning(f"Failed to extract orders: {e}")
 
                 # Step 6: Calculate metrics
                 await monitor.update_progress(process_id, 85.7, f"Calculating performance metrics", 6)
@@ -484,6 +537,7 @@ async def run_backtest(
                         "total_trades": int(analysis.get("total_trades", 0)),
                     },
                     "portfolio_curve": portfolio_metric_dict.get("excess_return_with_cost", []),
+                    "orders": orders,
                     "status": "completed",
                     "completed_at": datetime.now().isoformat(),
                 }
@@ -731,3 +785,65 @@ def calculate_crypto_metrics(portfolio_dict: Dict, indicator_dict: Dict) -> Dict
     except Exception as e:
         logger.error(f"Error calculating metrics: {e}")
         return {}
+
+
+def extract_backtest_orders(positions_df: pd.DataFrame) -> List[Dict[str, Any]]:
+    """
+    Extract trade orders from Qlib positions DataFrame.
+    
+    Qlib positions_df typically has MultiIndex [datetime, instrument] 
+    and columns like ['count', 'price', 'weight', ...].
+    """
+    if positions_df is None or positions_df.empty:
+        return []
+
+    orders = []
+    
+    try:
+        # Standardize the index and columns
+        df = positions_df.copy()
+        
+        # Ensure index names are correct
+        if df.index.names != ['datetime', 'instrument']:
+            # Try to fix if they are just swapped or mismatched
+            if 'datetime' in df.index.names and 'instrument' in df.index.names:
+                df = df.reorder_levels(['datetime', 'instrument'])
+            else:
+                # If index is not multi-index or levels are unnamed, this might fail
+                return []
+
+        # We need 'count' (quantity) and 'price'
+        if 'count' not in df.columns:
+            return []
+            
+        # Get list of unique instruments
+        instruments = df.index.get_level_values('instrument').unique()
+        
+        for inst in instruments:
+            inst_df = df.xs(inst, level='instrument').sort_index()
+            # Calculate difference in count to find trades
+            # Qlib count is the units held AFTER the trade at that timestamp
+            inst_df['prev_count'] = inst_df['count'].shift(1).fillna(0)
+            inst_df['trade_size'] = inst_df['count'] - inst_df['prev_count']
+            
+            # Filter rows where a trade occurred
+            trades = inst_df[inst_df['trade_size'].abs() > 1e-10].copy()
+            
+            for dt, row in trades.iterrows():
+                side = "BUY" if row['trade_size'] > 0 else "SELL"
+                orders.append({
+                    "datetime": dt.isoformat(),
+                    "symbol": inst,
+                    "side": side,
+                    "amount": abs(float(row['trade_size'])),
+                    "price": float(row['price']) if 'price' in row else 0.0,
+                    "value": abs(float(row['trade_size'] * (row['price'] if 'price' in row else 0.0))),
+                })
+        
+        # Sort orders by datetime
+        orders.sort(key=lambda x: x['datetime'])
+        
+    except Exception as e:
+        logging.error(f"Error in extract_backtest_orders: {e}")
+        
+    return orders

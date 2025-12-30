@@ -7,8 +7,10 @@
     },
     "data": {
         "interval": "1h",
-        "start_time": "2024-01-01",
-        "end_time": "2024-12-26",
+        "exchange": "binance",
+        "market_type": "future",
+        "start_time": "2020-01-01",
+        "end_time": "2025-12-25",
         "symbols": [
             "BTC/USDT",
             "ETH/USDT",
@@ -26,7 +28,7 @@
     },
     "backtest": {
         "start_time": "2024-1-01",
-        "end_time": "2024-12-25",
+        "end_time": "2025-12-25",
         "topk": 5,
         "portfolios": [
             "BTC/USDT",

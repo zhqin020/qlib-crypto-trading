@@ -22,6 +22,7 @@ from .validation import (
     validate_date_range,
     validate_interval,
     validate_provider,
+    validate_market_type,
     ValidationError
 )
 
@@ -43,20 +44,22 @@ def _require_ccxt() -> None:
         )
 
 
-def get_exchange(provider: str = "binance") -> "Exchange":
+def get_exchange(provider: str = "binance", market_type: str = "spot") -> "Exchange":
     """Get or create exchange instance"""
     _require_ccxt()
 
-    if provider not in _exchanges:
+    cache_key = f"{provider}_{market_type}"
+
+    if cache_key not in _exchanges:
         exchange_class = getattr(ccxt, provider)
-        _exchanges[provider] = exchange_class({
+        _exchanges[cache_key] = exchange_class({
             'enableRateLimit': True,
-            'options': {'defaultType': 'spot'}
+            'options': {'defaultType': market_type}
         })
-    return _exchanges[provider]
+    return _exchanges[cache_key]
 
 
-async def get_quote(symbol: str, provider: Optional[str] = None) -> Dict[str, Any]:
+async def get_quote(symbol: str, provider: Optional[str] = None, market_type: str = "spot") -> Dict[str, Any]:
     """
     Get real-time quote for a crypto symbol
 
@@ -75,10 +78,11 @@ async def get_quote(symbol: str, provider: Optional[str] = None) -> Dict[str, An
         symbol = validate_symbol(symbol)
         provider = provider or "binance"
         provider = validate_provider(provider)
+        market_type = validate_market_type(market_type)
 
-        logger.debug(f"Fetching quote: symbol={symbol}, provider={provider}")
+        logger.debug(f"Fetching quote: symbol={symbol}, provider={provider}, market_type={market_type}")
 
-        exchange = get_exchange(provider)
+        exchange = get_exchange(provider, market_type)
 
         ticker = await asyncio.to_thread(exchange.fetch_ticker, symbol)
 
@@ -102,7 +106,7 @@ async def get_quote(symbol: str, provider: Optional[str] = None) -> Dict[str, An
         raise
 
 
-async def get_quotes_batch(symbols: List[str], provider: Optional[str] = None) -> List[Dict[str, Any]]:
+async def get_quotes_batch(symbols: List[str], provider: Optional[str] = None, market_type: str = "spot") -> List[Dict[str, Any]]:
     """
     Get quotes for multiple symbols in parallel
 
@@ -121,10 +125,11 @@ async def get_quotes_batch(symbols: List[str], provider: Optional[str] = None) -
         symbols = validate_symbols(symbols, max_count=1000)
         provider = provider or "binance"
         provider = validate_provider(provider)
+        market_type = validate_market_type(market_type)
 
-        logger.debug(f"Fetching batch quotes: {len(symbols)} symbols, provider={provider}")
+        logger.debug(f"Fetching batch quotes: {len(symbols)} symbols, provider={provider}, market_type={market_type}")
 
-        tasks = [get_quote(symbol, provider) for symbol in symbols]
+        tasks = [get_quote(symbol, provider, market_type) for symbol in symbols]
         return await asyncio.gather(*tasks, return_exceptions=True)
     except ValidationError:
         raise
@@ -138,7 +143,8 @@ async def get_historical(
     start_date: str,
     end_date: str,
     interval: str = "1d",
-    provider: Optional[str] = None
+    provider: Optional[str] = None,
+    market_type: str = "spot"
 ) -> pd.DataFrame:
     """
     Get historical OHLCV data
@@ -163,10 +169,11 @@ async def get_historical(
         interval = validate_interval(interval)
         provider = provider or "binance"
         provider = validate_provider(provider)
+        market_type = validate_market_type(market_type)
 
-        logger.debug(f"Fetching historical: symbol={symbol}, range={start_date} to {end_date}, interval={interval}, provider={provider}")
+        logger.debug(f"Fetching historical: symbol={symbol}, range={start_date} to {end_date}, interval={interval}, provider={provider}, market_type={market_type}")
 
-        exchange = get_exchange(provider)
+        exchange = get_exchange(provider, market_type)
 
         # Convert dates to timestamps
         start_ts = int(start_dt.timestamp() * 1000)
@@ -262,6 +269,7 @@ async def download_crypto_universe(
     end_date: str,
     interval: str = "1d",
     provider: str = "binance",
+    market_type: str = "spot",
     output_dir: str = None
 ) -> pd.DataFrame:
     """
@@ -289,8 +297,9 @@ async def download_crypto_universe(
         start_dt, end_dt = validate_date_range(start_date, end_date)
         interval = validate_interval(interval)
         provider = validate_provider(provider)
+        market_type = validate_market_type(market_type)
 
-        logger.info(f"Downloading {len(symbols)} symbols from {start_date} to {end_date}")
+        logger.info(f"Downloading {len(symbols)} symbols from {start_date} to {end_date} ({market_type})")
 
         output_dir = output_dir or "data/raw"
         output_path = Path(output_dir)
@@ -301,7 +310,7 @@ async def download_crypto_universe(
         for symbol in symbols:
             try:
                 logger.info(f"Downloading {symbol}...")
-                df = await get_historical(symbol, start_date, end_date, interval, provider)
+                df = await get_historical(symbol, start_date, end_date, interval, provider, market_type)
 
                 # Normalize symbol name for filename
                 symbol_name = symbol.replace("/", "_")

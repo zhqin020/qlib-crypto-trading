@@ -4,7 +4,7 @@
 cd "$(dirname "$0")/.."
 
 export PYTHONPATH="${PYTHONPATH}:$(pwd)/src"
-export PROCESS_MONITOR_REDIS_URL="${PROCESS_MONITOR_REDIS_URL:-redis://localhost:6379/1}"
+export PROCESS_MONITOR_REDIS_URL="${PROCESS_MONITOR_REDIS_URL}"
 export PROCESS_MONITOR_REDIS_KEY="${PROCESS_MONITOR_REDIS_KEY:-process_monitor:processes}"
 export PROCESS_MONITOR_CHANNEL="${PROCESS_MONITOR_CHANNEL:-process_monitor:events}"
 export DATA_REFRESH_ENABLED="${DATA_REFRESH_ENABLED:-false}"
