@@ -8,8 +8,9 @@ This guide covers the complete end-to-end workflow of the platform, from data ac
 3. [Model Training](#3-model-training)
 4. [Backtesting](#4-backtesting)
 5. [Serving & Predictions](#5-serving--predictions)
-6. [Web Dashboard](#6-web-dashboard)
-7. [MCP Server (Agentic Tool)](#7-mcp-server)
+6. [Hyperparameter Tuning](#6-hyperparameter-tuning)
+7. [Web Dashboard](#7-web-dashboard)
+8. [MCP Server (Agentic Tool)](#8-mcp-server)
 
 ---
 
@@ -131,9 +132,31 @@ python scripts/predict.py <MODEL_ID> --dataset crypto_1h
 
 ---
 
-## 6. Web Dashboard
+## 6. Hyperparameter Tuning
 
-A beautiful UI for monitoring and controlling the entire platform.
+Optimize model performance using Bayesian Optimization (via Optuna) and a multi-factor scoring system.
+
+### Optimization Logic (WPS)
+The tuner calculates a **Weighted Performance Score (WPS)** to find balanced parameters:
+- **Sharpe (40%)** + **Sortino (15%)** + **Calmar (10%)** + **Win Rate (10%)**.
+- **Max Drawdown Penalty**: Heavy penalties for MDD > 20%. Disqualifies MDD > 50%.
+
+### Tuning Commands
+```bash
+# Tune LightGBM for 20 trials (default model in config)
+python scripts/tune_hyperparameters.py --trials 20
+
+# Tune ALSTM for 50 trials
+python scripts/tune_hyperparameters.py --model alstm --trials 50
+```
+
+### Outputs
+- `config/trading_params.best.json`: The best parameter set found.
+- `tuning_history.csv`: Full history of all trials with detailed metrics (Sortino, MDD, etc.).
+
+---
+
+## 7. Web Dashboard
 
 ### Start the Server
 ```bash
@@ -148,7 +171,7 @@ A beautiful UI for monitoring and controlling the entire platform.
 
 ---
 
-## 7. MCP Server (Agentic Tool)
+## 8. MCP Server (Agentic Tool)
 
 The platform is a first-class citizen of the **Model Context Protocol (MCP)**, allowing AI agents (like Claude or Gemini) to control it directly.
 

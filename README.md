@@ -14,6 +14,7 @@ A comprehensive AI-powered cryptocurrency trading and research platform built on
 - **Web Dashboard**: Beautiful UI for monitoring and control
 - **REST API**: Complete FastAPI-based API with WebSocket support
 - **Real-Time Process Monitoring**: Live progress tracking with WebSocket updates
+- **Smart Hyperparameter Tuning**: Bayesian optimization via Optuna with multi-factor scoring (WPS)
 - **Production-Ready Security**: API key authentication, input validation, rate limiting
 
 ### 📊 Supported Models
@@ -129,14 +130,16 @@ python scripts/run_backtest.py <model_id>
 
 #### 5. Generate Predictions
 ```bash
-python scripts/predict.py --date 2024-12-25
-```
-
-Generates trading signals for a specific date (defaults to today if date not specified).
-Pass a specific model ID if needed:
-```bash
 python scripts/predict.py <model_id> --date 2024-12-25
 ```
+
+#### 6. Smart Hyperparameter Tuning
+```bash
+# Optimize model using Bayesian Optimization (Optuna)
+python scripts/tune_hyperparameters.py --model alstm --trials 50
+```
+
+This uses a **Weighted Performance Score (WPS)** considering Sharpe, Sortino, Calmar, and Win Rate, while penalizing excessive drawdowns.
 
 ## 📚 Documentation
 
@@ -403,6 +406,7 @@ The platform calculates crypto-specific metrics:
 - **Calmar Ratio**: Return/Drawdown ratio
 - **Information Ratio**: Excess return consistency
 - **Win Rate**: Percentage of profitable periods
+- **Weighted Performance Score (WPS)**: Composite score used for smart tuning (Sharpe + Sortino + Calmar + WinRate - Drawdown Penalty)
 
 ## 🔒 Security Features
 
