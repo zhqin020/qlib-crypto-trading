@@ -78,17 +78,21 @@ python scripts/convert_to_qlib.py --freq 1h
 ---
 
 ## 3. Model Training
+Train Machine Learning models using configurations defined in `config/trading_params.json`.
 
-Train Machine Learning models using standardized feature sets.
-
-### Feature Sets
-- **Alpha158**: 158 technical indicators (Best for 1d/Daily).
-- **Alpha360**: 360 features (Best for 1h/Intraday).
+### Supported Models
+- **LightGBM / XGBoost**: Efficient gradient boosting trees.
+- **LSTM / Transformer**: Deep learning models for sequence modeling.
 
 ### Training Command
+1. **Configure**: Set `training.model_type` in `config/trading_params.json` (e.g., `"model_type": "lstm"`).
+2. **Train**:
 ```bash
-# Train a LightGBM model on hourly data
-python scripts/train_sample_model.py --dataset crypto_1h --handler lightgbm
+# Auto-loads config and trains the specified model
+python scripts/train_sample_model.py
+
+# Or override via CLI
+python scripts/train_sample_model.py --model xgboost
 ```
 *The model and its metadata will be saved in `models/trained/`.*
 
@@ -100,7 +104,11 @@ Evaluate your models using crypto-specific performance metrics. The engine handl
 
 ### Run Backtest
 ```bash
-python scripts/run_backtest.py <MODEL_ID> --start 2024-11-01 --end 2024-12-25
+# Automatically finds and tests the LATEST trained model of the configured type
+python scripts/run_backtest.py
+
+# Or specify a model explicitly
+python scripts/run_backtest.py <MODEL_ID>
 ```
 
 ### Key Metrics Tracked

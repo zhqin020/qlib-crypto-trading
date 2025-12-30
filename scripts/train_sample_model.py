@@ -57,12 +57,42 @@ async def main():
     interval = data_cfg.get("interval", "1h")
     market_type = data_cfg.get("market_type", "spot")
     
+    import argparse
+    
+    # Load default model from config
+    training_cfg = config.get("training", {})
+    default_model = training_cfg.get("model_type", "lightgbm")
+    
+    parser = argparse.ArgumentParser(description="Train a sample model")
+    parser.add_argument("--model", default=default_model, help=f"Model type (lightgbm, xgboost, lstm, transformer). Default: {default_model}")
+    args = parser.parse_args()
+    model_type = args.model
+    
+    # Prepare training parameters
+    
+    # 1. Get model-specific parameters
+    # Looks for params in 'training.models.<model_type>'
+    model_params = training_cfg.get("models", {}).get(model_type, {})
+    
+    # 2. Start with a copy of these params
+    params = model_params.copy()
+    
+    # 3. Add global training options (excluding structural keys)
+    # This allows global overrides like "device" or "n_epochs" if set at root level
+    for k, v in training_cfg.items():
+        if k not in ["model_type", "feature_handler", "models"]:
+            params[k] = v
+            
+    # Ensure device is set (defaults to auto if not in config)
+    if "device" not in params:
+        params["device"] = "auto"
+
     # Construct dataset_ref with market_type suffix if not spot
     mt_suffix = f"_{market_type}" if market_type != "spot" else ""
     dataset_ref = f"crypto_{interval}{mt_suffix}"
 
     # Train model
-    print("Training LightGBM model...")
+    print(f"Training {model_type} model...")
     
     # Use config end dates for segments if available
     bt_start = bt_cfg.get("start_time", "2024-11-01")
@@ -71,8 +101,8 @@ async def main():
     result = await train_model(
         dataset_ref=dataset_ref,
         feature_set_ref=feature_set["name"],
-        handler="lightgbm",
-        params={},
+        handler=model_type,
+        params=params,
         segments={
             "train": ["2024-03-01", "2024-08-31"],
             "valid": ["2024-09-01", "2024-10-31"],

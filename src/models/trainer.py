@@ -801,15 +801,15 @@ def get_model_config(
             "class": "LGBModel",
             "module_path": "qlib.contrib.model.gbdt",
             "kwargs": {
-                "loss": "mse",
-                "colsample_bytree": 0.8879,
-                "learning_rate": 0.0421,
-                "subsample": 0.8789,
-                "lambda_l1": 0.01,
-                "lambda_l2": 0.01,
-                "max_depth": 8,
-                "num_leaves": 31,
-                "num_threads": 20,
+                "loss": "mse",                # 损失函数: 均方误差 (Mean Squared Error)
+                "colsample_bytree": 0.8879,   # 特征采样比例: 每次构建树时随机选择 88.79% 的特征 (防止过拟合) 
+                "learning_rate": 0.0421,      # 学习率: 控制每棵树对最终预测的贡献 (越小越稳健，但需要更多树)
+                "subsample": 0.8789,          # 样本采样比例: 每次构建树时随机选择 87.89% 的数据 (防止过拟合)
+                "lambda_l1": 0.01,            # L1 正则化 (Lasso): 增加模型稀疏性，减少不重要特征的影响
+                "lambda_l2": 0.01,            # L2 正则化 (Ridge): 防止权重过大，平滑模型
+                "max_depth": 8,               # 树的最大深度: 控制模型复杂度 (太深容易过拟合，太浅容易欠拟合)
+                "num_leaves": 31,             # 叶子节点数: LightGBM 的核心参数，控制树的复杂度 (通常 < 2^max_depth)
+                "num_threads": 20,            # 训练线程数: 并行计算加速
                 **params_copy
             },
         },
@@ -817,11 +817,11 @@ def get_model_config(
             "class": "XGBModel",
             "module_path": "qlib.contrib.model.xgboost",
             "kwargs": {
-                "booster": "gbtree",
-                "learning_rate": 0.05,
-                "max_depth": 6,
-                "n_estimators": 500,
-                "objective": "reg:squarederror",
+                "booster": "gbtree",          # 提升器类型: 基于树的模型 (Gradient Boosting Tree)
+                "learning_rate": 0.05,        # 学习率: 同样控制每步的步长
+                "max_depth": 6,               # 树的最大深度: XGBoost 中最重要的抗过拟合参数
+                "n_estimators": 500,          # 树的数量 (迭代次数): 树越多拟合越强，但计算越慢
+                "objective": "reg:squarederror", # 目标函数: 回归任务的平方误差
                 **params_copy
             },
         },
@@ -829,16 +829,16 @@ def get_model_config(
             "class": "LSTM",
             "module_path": "qlib.contrib.model.pytorch_lstm",
             "kwargs": {
-                "d_feat": 6,
-                "hidden_size": 64,
-                "num_layers": 2,
-                "dropout": 0.2,
-                "n_epochs": 100,
-                "lr": 0.001,
-                "batch_size": 512,
-                "early_stop": 20,
-                "loss": "mse",
-                "optimizer": "adam",
+                "d_feat": 6,                  # 输入特征维度: 必须与数据集特征数一致 (Alpha158=158)
+                "hidden_size": 64,            # 隐藏层大小: LSTM 内部记忆单元的容量 (越大拟合能力越强)
+                "num_layers": 2,              # LSTM 层数: 堆叠的层数 (深层网络能捕捉更复杂的时序模式)
+                "dropout": 0.2,               # Dropout 比率: 随机丢弃 20% 的神经元以防止过拟合
+                "n_epochs": 100,              # 训练轮数: 遍历整个数据集的次数
+                "lr": 0.001,                  # 学习率: 优化器更新权重的步长
+                "batch_size": 512,            # 批次大小: 每次梯度更新使用的样本数 (越大越稳，越小波动越大)
+                "early_stop": 20,             # 早停轮数: 如果验证集 loss 在 20 轮内不再下降，则停止训练
+                "loss": "mse",                # 损失函数
+                "optimizer": "adam",          # 优化器: Adam 通常是深度学习的首选默认值
                 # GPU config will be merged below
                 **params_copy
             },

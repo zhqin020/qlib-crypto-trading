@@ -38,7 +38,7 @@ async def main():
     config = load_config()
     bt_config = config.get("backtest", {})
 
-    parser.add_argument("model_id", help="Model identifier to backtest")
+    parser.add_argument("model_id", nargs="?", help="Model identifier to backtest. If omitted, uses latest model of configured type.")
     parser.add_argument("--dataset", default="crypto", help="Dataset reference (default: crypto)")
     parser.add_argument("--costs", default="medium", help="Cost level: low, medium, high")
     parser.add_argument("--rebalance", default=bt_config.get("rebalance", "weekly"), help="Rebalance frequency (e.g., weekly, monthly)")
@@ -59,12 +59,37 @@ async def main():
     parser.add_argument("--instruments", default=default_portfolio_str, help="Comma-separated list of instruments for backtest")
 
     args = parser.parse_args()
+    
+    model_id = args.model_id
+    
+    # Auto-detect latest model if not provided
+    if not model_id:
+        training_cfg = config.get("training", {})
+        target_type = training_cfg.get("model_type", "lightgbm")
+        
+        models_dir = Path(__file__).parent.parent / "models" / "trained"
+        if not models_dir.exists():
+            print(f"Error: Models directory not found at {models_dir}")
+            sys.exit(1)
+            
+        # Find all .pkl files starting with target_type
+        candidates = list(models_dir.glob(f"{target_type}_*.pkl"))
+        if not candidates:
+            print(f"Error: No trained models found for type '{target_type}'")
+            print(f"  Please run: python scripts/train_sample_model.py")
+            sys.exit(1)
+            
+        # Sort by modification time (newest first)
+        candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        latest_model = candidates[0]
+        model_id = latest_model.stem # remove .pkl
+        print(f"Auto-selected latest {target_type} model: {model_id}")
 
-    print(f"Running backtest for model: {args.model_id}")
+    print(f"Running backtest for model: {model_id}")
     print()
 
     result = await run_backtest(
-        model_id=args.model_id,
+        model_id=model_id,
         dataset_ref=args.dataset,
         costs=args.costs,
         rebalance=args.rebalance,

@@ -110,21 +110,33 @@ Converts CSV data to Qlib's optimized binary format with 24/7 crypto calendar.
 python scripts/train_sample_model.py
 ```
 
-Trains a LightGBM model with Alpha158 features.
+Trains a model based on the configuration in `config/trading_params.json` (default: LSTM).
+You can change the model type (`lightgbm`, `xgboost`, `lstm`) in the config file or override it via CLI:
+```bash
+python scripts/train_sample_model.py --model xgboost
+```
 
 #### 4. Run Backtest
+```bash
+python scripts/run_backtest.py
+```
+
+Automatically runs a backtest for the latest trained model of the configured type.
+To backtest a specific model:
 ```bash
 python scripts/run_backtest.py <model_id>
 ```
 
-Evaluates model performance with crypto-specific metrics.
-
 #### 5. Generate Predictions
 ```bash
-python scripts/predict.py <model_id>
+python scripts/predict.py --date 2024-12-25
 ```
 
-Generates trading signals for today's session.
+Generates trading signals for a specific date (defaults to today if date not specified).
+Pass a specific model ID if needed:
+```bash
+python scripts/predict.py <model_id> --date 2024-12-25
+```
 
 ## 📚 Documentation
 
