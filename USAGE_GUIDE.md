@@ -33,19 +33,38 @@ PROCESS_MONITOR_REDIS_URL="" # Set to empty if Redis is not locally available
 
 ### Centralized Trading Parameters
 Most trading parameters (symbols, interval, exchange, market type) are managed in `config/trading_params.json`.
+
+#### Data & Backtest Config
 ```json
 {
     "data": {
         "interval": "1h",
         "exchange": "binance",
-        "market_type": "spot",
-        "start_time": "2024-01-01",
-        "end_time": "2024-12-26",
-        "symbols": ["BTC/USDT", "ETH/USDT"]
+        "market_type": "future",
+        "symbols": ["BTC/USDT", "ETH/USDT", "..."]
     },
-    ...
+    "backtest": {
+        "start_time": "2023-05-03",
+        "end_time": "2025-01-01",
+        "topk": 5
+    }
 }
 ```
+
+#### Trading & Risk Config
+```json
+{
+    "trading": {
+        "direction": "long-short",
+        "init_investment": 10000,
+        "leverage": 1,
+        "take_profit": 0.1,
+        "stop_loss": -0.05
+    }
+}
+```
+*   `direction`: Supports `long`, `short`, and `long-short`.
+*   `take_profit`/`stop_loss`: Percentage-based exit triggers.
 *Note: Scripts will use these values as defaults unless overridden via command-line arguments.*
 
 ---
@@ -146,9 +165,14 @@ The tuner calculates a **Weighted Performance Score (WPS)** to find balanced par
 # Tune LightGBM for 20 trials (default model in config)
 python scripts/tune_hyperparameters.py --trials 20
 
-# Tune ALSTM for 50 trials
+# Tune ALSTM for 50 trials (includes topk and leverage optimization)
 python scripts/tune_hyperparameters.py --model alstm --trials 50
 ```
+
+### Integrated Strategy Tuning
+The tuner now optimizes not just model weights (learning rate, hidden size), but also **Strategy Parameters**:
+- **topk**: Optimal number of assets to hold.
+- **leverage**: Optimal leverage based on model confidence and risk tolerance.
 
 ### Outputs
 - `config/trading_params.best.json`: The best parameter set found.

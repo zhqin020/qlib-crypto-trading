@@ -38,7 +38,8 @@ def run_command(cmd):
     result = subprocess.run(
         cmd, 
         shell=True, 
-        capture_output=True, 
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT, # Merge stderr into stdout
         text=True
     )
     duration = time.time() - start_time
@@ -131,6 +132,11 @@ def objective(trial, model_type):
         if model_type == "alstm":
             params["rnn_type"] = trial.suggest_categorical("rnn_type", ["GRU", "LSTM"])
     
+    # 1.1 Strategy parameters tuning
+    strat_params = {}
+    strat_params["topk"] = trial.suggest_int("topk", 3, 10)
+    strat_params["leverage"] = trial.suggest_int("leverage", 1, 3)
+    
     # 2. Update config
     current_config = load_config()
     if "training" not in current_config: current_config["training"] = {}
@@ -139,10 +145,18 @@ def objective(trial, model_type):
     
     current_config["training"]["models"][model_type].update(params)
     current_config["training"]["model_type"] = model_type
+    
+    # Update backtest/trading sections
+    if "backtest" not in current_config: current_config["backtest"] = {}
+    if "trading" not in current_config: current_config["trading"] = {}
+    current_config["backtest"]["topk"] = strat_params["topk"]
+    current_config["trading"]["leverage"] = strat_params["leverage"]
+    
     save_config(current_config)
     
     # 3. Train
-    print(f"\n   [Trial {trial.number}] Parameters: {params}")
+    print(f"\n   [Trial {trial.number}] Model Params: {params}")
+    print(f"   [Trial {trial.number}] Strat Params: {strat_params}")
     print(f"   Training...", end="", flush=True)
     train_res, train_time = run_command("python scripts/train_sample_model.py")
     if train_res.returncode != 0:
@@ -158,6 +172,9 @@ def objective(trial, model_type):
         return -999.0
         
     metrics = parse_metrics(bt_res.stdout)
+    if metrics["sharpe"] == -999.0:
+        logger.warning(f"Failed to parse metrics for trial {trial.number}. Output tail: {bt_res.stdout[-200:]}")
+        
     wps_score = calculate_composite_score(metrics)
     print(f" Done ({bt_time:.1f}s) -> Sharpe: {metrics['sharpe']:.3f}, WPS: {wps_score:.4f}")
     
@@ -221,8 +238,21 @@ def main():
         if "models" not in best_config["training"]: best_config["training"]["models"] = {}
         if model_type not in best_config["training"]["models"]: best_config["training"]["models"][model_type] = {}
         
-        best_config["training"]["models"][model_type].update(study.best_params)
+        # Candidate model keys to filter from study.best_params
+        model_keys = ["learning_rate", "num_leaves", "lambda_l2", "max_depth", "n_estimators", "lr", "dropout", "hidden_size", "rnn_type"]
+        best_model_params = {k: v for k, v in study.best_params.items() if k in model_keys}
+        
+        best_config["training"]["models"][model_type].update(best_model_params)
         best_config["training"]["model_type"] = model_type
+        
+        # Update strategy bests
+        if "backtest" not in best_config: best_config["backtest"] = {}
+        if "trading" not in best_config: best_config["trading"] = {}
+        if "topk" in study.best_params:
+            best_config["backtest"]["topk"] = study.best_params["topk"]
+        if "leverage" in study.best_params:
+            best_config["trading"]["leverage"] = study.best_params["leverage"]
+            
         save_config(best_config, BEST_CONFIG_PATH)
         print(f"Best configuration saved to: {BEST_CONFIG_PATH}")
         print("="*60 + "\n")

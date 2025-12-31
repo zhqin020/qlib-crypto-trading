@@ -59,6 +59,11 @@ async def run_backtest(
     funding: bool = False,
     topk: int = 10,
     long_short: bool = False,
+    take_profit: Optional[float] = None,
+    stop_loss: Optional[float] = None,
+    direction: str = "long",
+    init_investment: float = 100000,
+    leverage: int = 1,
     start_time: Optional[str] = None,
     end_time: Optional[str] = None,
     benchmark: Optional[str] = None,
@@ -353,23 +358,31 @@ async def run_backtest(
                     logger.warning("Predictions dataframe is EMPTY!")
 
                 # Define trading strategy with pre-calculated predictions
-                if long_short:
-                    # For long-short, we use a custom or tailored WeightStrategy if needed,
-                    # but since Qlib's TopkDropout is long-only, we'll note the limitation
-                    # or switch to a basic signal selection if possible.
-                    # For now, let's keep TopkDropout but allow topk to be set.
-                    logger.warning("LongShortStrategy support is limited; using TopkDropout on both ends is not standard.")
-                
-                strategy_config = {
-                    "class": "TopkDropoutStrategy",
-                    "module_path": "qlib.contrib.strategy.signal_strategy",
-                    "kwargs": {
-                        "signal": predictions,
-                        "topk": topk,
-                        "n_drop": max(1, topk // 5),
-                        "risk_degree": 0.95,
-                    },
-                }
+                if long_short or take_profit or stop_loss or direction != "long":
+                    logger.info(f"Using CryptoLongShortStrategy (direction={direction}, long_short={long_short}, TP={take_profit}, SL={stop_loss})")
+                    strategy_config = {
+                        "class": "CryptoLongShortStrategy",
+                        "module_path": "backtesting.strategies",
+                        "kwargs": {
+                            "signal": predictions,
+                            "topk": topk,
+                            "direction": direction,
+                            "take_profit": take_profit,
+                            "stop_loss": stop_loss,
+                            "risk_degree": float(leverage),
+                        },
+                    }
+                else:
+                    strategy_config = {
+                        "class": "TopkDropoutStrategy",
+                        "module_path": "qlib.contrib.strategy.signal_strategy",
+                        "kwargs": {
+                            "signal": predictions,
+                            "topk": topk,
+                            "n_drop": max(1, topk // 5),
+                            "risk_degree": 0.95,
+                        },
+                    }
 
                 # Define executor (WITHOUT cost parameters - those go in exchange_kwargs)
                 executor_config = {
@@ -379,8 +392,7 @@ async def run_backtest(
                         "time_per_step": qlib_handler_freq,
                         "generate_portfolio_metrics": True,
                         "verbose": False,
-                        # NOTE: Cost parameters (open_cost, close_cost, etc.) are passed
-                        # via exchange_kwargs to backtest(), NOT here in executor config
+                        "initial_cash": init_investment,
                     },
                 }
 
@@ -689,6 +701,9 @@ async def run_backtest(
                         "funding": funding,
                         "topk": topk,
                         "long_short": long_short,
+                        "direction": direction,
+                        "init_investment": init_investment,
+                        "leverage": leverage,
                         "benchmark": resolved_benchmark,
                     },
                     "metrics": {

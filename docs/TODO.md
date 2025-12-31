@@ -1,81 +1,24 @@
-优化方案是否有改善的空间 
-tune_hyperparameters.py
- 
-scripts/tune_hyperparameters.py
- 采用的是最基础的网格搜索 (Grid Search)，虽然直观，但在实际生产中确实有很大的提升空间。以下是几个可以显著改善优化方案的方向：
+# ✅ Completed Enhancements
 
-1. 引入贝叶斯优化 (Bayesian Optimization)
-现状：网格搜索是盲目遍历。如果有 4 个参数，每个 5 种可能，就是 $5^4=625$ 次测试，有些组合显然是很差的，但网格搜索依然会跑完。 建议：使用 Optuna 库。它会根据之前的测试结果，预测哪些参数组合更有潜力，从而实现“聪明”的搜索。
+## 1. Smart Hyperparameter Tuning (Optuna)
+- [x] **Bayesian Optimization**: Migrated from Grid Search to Optuna for efficient parameter search.
+- [x] **Multi-factor Scoring (WPS)**: Implemented Weighted Performance Score (Sharpe, Sortino, Calmar, Win Rate).
+- [x] **Risk Penalties**: Automatic disqualification for Max Drawdown > 50%.
+- [x] **Integrated Strategy Tuning**: Optimized `topk` and `leverage` alongside model parameters.
 
-优点：在更短的时间内找到更优解，支持剪枝（发现初步表现不佳直接停止训练）。
-2. 增加滚动交叉验证回测 (Rolling Walk-Forward)
-现状：目前只在一个固定的测试期（
-config
- 里的 test 段）跑 Sharpe。这非常容易产生 “过拟合 (Overfitting)” —— 你的参数可能只是碰巧在这个月表现好。 建议：在调优时，选择 3-5 个不同的时间窗口进行回测，取平均 Sharpe Ratio。
+## 2. Advanced Trading Strategy
+- [x] **Direction Support**: Integrated `long`, `short`, and `long-short` directions.
+- [x] **Risk Control**: Implemented per-instrument Stop-Loss and Take-Profit.
+- [x] **Leverage Support**: Integrated leverage into the backtesting engine and executor.
 
-优点：选出来的参数在未来（实盘）的生存能力更强。
-3. 多指标综合评估
-现状：只看 Sharpe Ratio。 建议：引入一个综合得分函数。例如：Score = Sharpe * 0.7 + (1 - MaxDrawdown) * 0.3。
+## 3. Configuration Standardization
+- [x] **Centralized Config**: All parameters (data, training, backtest, trading) now reside in `config/trading_params.json`.
+- [x] **CLI Overrides**: Scripts support `--config` to load custom parameter sets.
 
-优点：防止选出一个收益极高但回撤率也惊人（不可实操）的策略。
-4. 自动化参数相关性分析
-建议：将所有测试记录保存到 CSV。
+---
 
-优点：通过 Optuna 的可视化工具，你可以看到哪个参数对结果影响最大。比如你可能发现 num_leaves 改来改去没影响，但 learning_rate 极其敏感，这样下次你就可以专注调 lr。
-
-
-
-
-
-Performance Metrics:
-  Annualized Return: 41.66%
-  Sharpe Ratio: 0.854
-  Sortino Ratio: 1.306
-  Max Drawdown: 45.12%
-  Calmar Ratio: 0.923
-  Win Rate: 51.79%
-  Total Trades: 728
-
-请评价一下这些指标，并解释各指标的含义
-
-
-这份回测报告展示了一个高收益、高风险的量化策略。在加密货币市场中，这样的指标具有一定的行业典型性，但风险控制仍有较大提升空间。
-
-以下是各指标的详细含义解释及针对你这一组数据的评价：
-
-1. 指标详细解释
-Annualized Return (年化收益率): 41.66%
-含义: 策略平均每年产生的收益。
-评价: 非常优秀。远高于传统金融市场（如标普500约10%），在加密货币量化策略中也属于相当稳健的高收益水平。
-Sharpe Ratio (夏普比率): 0.854
-含义: 衡量每承受一单位总风险（波动率）所能获得的超额回报。
-评价: 合格但一般。通常在量化交易中，>1.0 被视为优秀。0.854 表明你的收益很大程度上是靠“扛波动”换来的。
-Sortino Ratio (索提诺比率): 1.306
-含义: 类似夏普比率，但它只惩罚下行波动（即亏损时的波动），不惩罚向上获利时的波动。
-评价: 亮点。1.306 明显高于夏普比率 (0.854)，这是一个非常积极的信号。它说明策略的波动很多时候是由于价格快速上涨（获利）引起的，而不是一直在无序的阴跌和暴跌中震荡。
-Max Drawdown (最大回撤): 45.12%
-含义: 在统计周期内，账户资产从最高点跌落到最低点的最大幅度。它是你可能面临的“最惨情况”。
-评价: 极高风险。回撤超过 45% 意味着如果在那时撤资，你需要接下来的资产翻倍（上涨约 82%）才能回本。这在心理和资金管理上都是巨大的挑战。
-Calmar Ratio (卡玛比率): 0.923
-含义: 年化收益率 / 最大回撤。衡量“收益比痛苦”的比例。
-评价: 尚可。约等于 1，意味着你为了博取 10% 的收益，可能要做好承担 10% 回撤的准备。专业资管通常追求该值 > 2。
-Win Rate (胜率): 51.79%
-含义: 获利的交易次数占总交易次数的比例。
-评价: 正常（量化典型值）。量化趋势策略的胜率通常在 45%-55% 之间。只要“盈亏比”（赢的时候赚得多，输的时候赔得少）够高，这个胜率足以支撑盈利。
-Total Trades (总交易次数): 728
-含义: 回测期间发生的总买卖次数。
-评价: 样本充足。平均每天约 1 次交易。这说明你的回测结果在统计学上是比较可信的，不是靠一两次偶然的大涨得出来的。
-2. 综合评价与建议
-总结：这是一个“具有上涨攻击力、但防守薄弱”的策略。
-
-优点：
-进攻性强：41.66% 的年化非常有吸引力。
-获利性质好：Sortino Ratio 较高，说明策略在捕捉上涨机会时非常有力，风险主要集中在上涨过程中的波动。
-痛点：
-风险控制极差：45% 的最大回撤是该策略的死穴。如果遇到大熊市，该策略可能会出现长期的浮亏，导致实盘时很难拿住。
-下一步优化建议： 针对这组 LightGBM 参数，你应该利用我们刚升级的 Optuna 多指标评分系统 (WPS) 进行调优。重点调整：
-
-降低回撤限制：在 WPS 中给 $MDD > 20%$ 的情况施加更重的惩罚。
-降低 Learning Rate：尝试更低的学习率以平滑收益曲线。
-增加正则化：调高 lambda_l2 以减少模型对特定暴涨币种的过拟合。
-你现在的策略可以跑赢大盘，但很容易在一次市场大跌中回吐大部分利润。建议针对“风险控制”再跑一轮调优
+# 🚀 Next Steps (Roadmap)
+- [ ] **Rolling Walk-Forward Validation**: Validate parameters across multiple time windows to prevent overfitting.
+- [ ] **Transaction Cost Modeling**: More precise fee estimation for high-frequency strategies.
+- [ ] **Real-time Order Execution**: Connect the strategy engine to live exchange APIs.
+- [ ] **Portfolio Optimization**: Implement Markowitz or Black-Litterman for dynamic asset allocation.

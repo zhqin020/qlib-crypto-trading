@@ -14,7 +14,9 @@ A comprehensive AI-powered cryptocurrency trading and research platform built on
 - **Web Dashboard**: Beautiful UI for monitoring and control
 - **REST API**: Complete FastAPI-based API with WebSocket support
 - **Real-Time Process Monitoring**: Live progress tracking with WebSocket updates
-- **Smart Hyperparameter Tuning**: Bayesian optimization via Optuna with multi-factor scoring (WPS)
+- **Long-Short Trading Strategy**: Advanced strategy supporting long, short, and hedged positions
+- **Built-in Risk Control**: Integrated per-instrument Take-Profit and Stop-Loss triggers
+- **Smart Hyperparameter Tuning**: Bayesian optimization via Optuna with multi-factor scoring (WPS) and integrated strategy parameter tuning (Top-K, Leverage)
 - **Production-Ready Security**: API key authentication, input validation, rate limiting
 
 ### 📊 Supported Models

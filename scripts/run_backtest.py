@@ -44,6 +44,7 @@ async def main():
     
     config = load_config(Path(conf_args.config) if conf_args.config else None)
     bt_config = config.get("backtest", {})
+    tr_config = config.get("trading", {})
 
     # Second pass: parse everything
     parser = argparse.ArgumentParser(description="Run a backtest for a trained model")
@@ -58,6 +59,11 @@ async def main():
     parser.add_argument("--benchmark", default=bt_config.get("benchmark"), help="Benchmark instrument (e.g., BTC)")
     parser.add_argument("--topk", type=int, default=bt_config.get("topk", 10), help="Number of assets to hold (default: 10)")
     parser.add_argument("--long-short", action="store_true", help="Enable long-short trading (if supported)")
+    parser.add_argument("--tp", type=float, default=tr_config.get("take_profit"), help="Take profit percentage (e.g., 0.1 for 10%)")
+    parser.add_argument("--sl", type=float, default=tr_config.get("stop_loss"), help="Stop loss percentage (e.g., -0.05 for -5%)")
+    parser.add_argument("--direction", default=tr_config.get("direction", "long"), help="Trading direction: long, short, long-short")
+    parser.add_argument("--init-investment", type=float, default=tr_config.get("init_investment", 100000), help="Initial investment amount")
+    parser.add_argument("--leverage", type=int, default=tr_config.get("leverage", 1), help="Leverage multiplier")
     
     # Portfolio subset
     default_portfolio = bt_config.get("portfolios")
@@ -106,6 +112,11 @@ async def main():
         funding=args.funding,
         topk=args.topk,
         long_short=args.long_short,
+        take_profit=args.tp,
+        stop_loss=args.sl,
+        direction=args.direction,
+        init_investment=args.init_investment,
+        leverage=args.leverage,
         start_time=args.start_time,
         end_time=args.end_time,
         benchmark=args.benchmark,
