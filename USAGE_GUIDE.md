@@ -170,14 +170,17 @@ The tuner calculates a **Weighted Performance Score (WPS)** to find balanced par
 
 ### Tuning Commands
 ```bash
-# Tune LightGBM for 20 trials (default model in config)
-python scripts/tune_hyperparameters.py --trials 20
+# Tune ALSTM for 50 trials with 4 parallel workers
+python scripts/tune_hyperparameters.py --model alstm --trials 50 --n_jobs 4
 
-# Tune ALSTM for 50 trials (includes topk and leverage optimization)
-python scripts/tune_hyperparameters.py --model alstm --trials 50
+# View real-time tuning progress in database
+psql -h localhost -U crypto_user -d qlib_crypto -c "SELECT study_name, trial_id, state, datetime_start FROM trials ORDER BY datetime_start DESC LIMIT 10;"
 ```
 
-### Integrated Strategy Tuning
+### Advanced Tuning Features
+- **Parallelization**: Increase `n_jobs` to utilize multiple CPU cores.
+- **Persistence**: Progress is saved to PostgreSQL, allowing for crash recovery.
+- **Resource Control**: Threading and Epoch limits are managed via `config/trading_params.json` under the `tuning` section.
 The tuner now optimizes not just model weights (learning rate, hidden size), but also **Strategy Parameters**:
 - **topk**: Optimal number of assets to hold.
 - **leverage**: Optimal leverage based on model confidence and risk tolerance.
