@@ -47,23 +47,27 @@ async def main():
     tr_config = config.get("trading", {})
 
     # Second pass: parse everything
-    parser = argparse.ArgumentParser(description="Run a backtest for a trained model")
+    parser = argparse.ArgumentParser(
+        description="Run a backtest for a trained model using Qlib engine",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
     parser.add_argument("--config", default=None, help="Path to custom config JSON file (optional)")
-    parser.add_argument("model_id", nargs="?", help="Model identifier to backtest. If omitted, uses latest model of configured type.")
-    parser.add_argument("--dataset", default="crypto", help="Dataset reference (default: crypto)")
-    parser.add_argument("--costs", default="medium", help="Cost level: low, medium, high")
-    parser.add_argument("--rebalance", default=bt_config.get("rebalance", "weekly"), help="Rebalance frequency (e.g., weekly, monthly)")
-    parser.add_argument("--funding", action="store_true", help="Include funding rate costs")
+    parser.add_argument("model_id", nargs="?", help="Model identifier (pickle filename without .pkl) to backtest. If omitted, uses the latest model of the type specified in config.")
+    parser.add_argument("--dataset", default="crypto", help="Dataset reference to use for backtest (configured in Qlib)")
+    parser.add_argument("--costs", default="medium", choices=["low", "medium", "high"], help="Transaction cost level: low (0.01%%), medium (0.05%%), high (0.1%%)")
+    parser.add_argument("--rebalance", default=bt_config.get("rebalance", "weekly"), help="Rebalance frequency (weekly, monthly, daily, or N-day frequency like '5d')")
+    parser.add_argument("--funding", action="store_true", help="Include funding rate costs (for futures/swap markets)")
     parser.add_argument("--start", dest="start_time", default=bt_config.get("start_time"), help="Backtest start date (YYYY-MM-DD)")
     parser.add_argument("--end", dest="end_time", default=bt_config.get("end_time"), help="Backtest end date (YYYY-MM-DD)")
-    parser.add_argument("--benchmark", default=bt_config.get("benchmark"), help="Benchmark instrument (e.g., BTC)")
-    parser.add_argument("--topk", type=int, default=bt_config.get("topk", 10), help="Number of assets to hold (default: 10)")
-    parser.add_argument("--long-short", action="store_true", help="Enable long-short trading (if supported)")
-    parser.add_argument("--tp", type=float, default=tr_config.get("take_profit"), help="Take profit percentage (e.g., 0.1 for 10%)")
-    parser.add_argument("--sl", type=float, default=tr_config.get("stop_loss"), help="Stop loss percentage (e.g., -0.05 for -5%)")
-    parser.add_argument("--direction", default=tr_config.get("direction", "long"), help="Trading direction: long, short, long-short")
-    parser.add_argument("--init-investment", type=float, default=tr_config.get("init_investment", 100000), help="Initial investment amount")
-    parser.add_argument("--leverage", type=int, default=tr_config.get("leverage", 1), help="Leverage multiplier")
+    parser.add_argument("--benchmark", default=bt_config.get("benchmark"), help="Benchmark instrument for relative performance (e.g., BTC/USDT)")
+    parser.add_argument("--topk", type=int, default=bt_config.get("topk", 10), help="Number of assets to hold in the portfolio at any time")
+    parser.add_argument("--long-short", action="store_true", help="Enable long-short trading (must be supported by the strategy)")
+    parser.add_argument("--tp", type=float, default=tr_config.get("take_profit"), help="Take profit percentage (e.g., 0.1 for 10%%)")
+    parser.add_argument("--sl", type=float, default=tr_config.get("stop_loss"), help="Stop loss percentage (e.g., -0.05 for -5%%)")
+    parser.add_argument("--direction", default=tr_config.get("direction", "long"), choices=["long", "short", "long-short"], help="Trading directionality")
+    parser.add_argument("--init-investment", type=float, default=tr_config.get("init_investment", 100000), help="Initial capital in USDT")
+    parser.add_argument("--leverage", type=int, default=tr_config.get("leverage", 1), help="Leverage multiplier to apply to positions")
+    parser.add_argument("--threshold", type=float, default=tr_config.get("signal_threshold", 0.0), help="Absolute score threshold. Scores below this are ignored (no confidence, no trade)")
     
     # Portfolio subset
     default_portfolio = bt_config.get("portfolios")
@@ -72,7 +76,7 @@ async def main():
     else:
         default_portfolio_str = None
     
-    parser.add_argument("--instruments", default=default_portfolio_str, help="Comma-separated list of instruments for backtest")
+    parser.add_argument("--instruments", default=default_portfolio_str, help="Comma-separated list of instruments to restrict the backtest window to. Defaults to all in dataset.")
 
     args = parser.parse_args()
     
@@ -117,6 +121,7 @@ async def main():
         direction=args.direction,
         init_investment=args.init_investment,
         leverage=args.leverage,
+        signal_threshold=args.threshold,
         start_time=args.start_time,
         end_time=args.end_time,
         benchmark=args.benchmark,

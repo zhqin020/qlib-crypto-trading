@@ -46,9 +46,22 @@ async def main():
     training_cfg = config.get("training", {})
     default_model = training_cfg.get("model_type", "lightgbm")
     
-    parser = argparse.ArgumentParser(description="Train a sample model")
-    parser.add_argument("--model", default=default_model, help=f"Model type (lightgbm, xgboost, lstm, transformer). Default: {default_model}")
-    parser.add_argument("--config", default=None, help="Path to custom config JSON file (optional)")
+    parser = argparse.ArgumentParser(
+        description="Train a machine learning model for crypto price prediction",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
+    parser.add_argument("--model", default=default_model, choices=["lightgbm", "xgboost", "lstm", "transformer", "alstm", "gru"], help="Model architecture type")
+    parser.add_argument("--config", default=None, help="Path to custom configuration JSON file")
+    
+    # Date segments
+    parser.add_argument("--train-start", default="2023-05-10", help="Training period start date")
+    parser.add_argument("--train-end", default="2023-11-06", help="Training period end date")
+    parser.add_argument("--valid-start", default="2023-11-07", help="Validation period start date")
+    parser.add_argument("--valid-end", default="2023-12-07", help="Validation period end date")
+    
+    # Hardware
+    parser.add_argument("--device", default="auto", help="Execution device: auto, cpu, cuda, or cuda:N")
+    
     args = parser.parse_args()
     
     model_type = args.model
@@ -88,9 +101,8 @@ async def main():
         if k not in ["model_type", "feature_handler", "models"]:
             params[k] = v
             
-    # Ensure device is set (defaults to auto if not in config)
-    if "device" not in params:
-        params["device"] = "auto"
+    # Ensure device is set
+    params["device"] = args.device
 
     # Train model
     print(f"Training {model_type} model...")
@@ -105,8 +117,8 @@ async def main():
         handler=model_type,
         params=params,
         segments={
-            "train": ["2024-03-01", "2024-08-31"],
-            "valid": ["2024-09-01", "2024-10-31"],
+            "train": [args.train_start, args.train_end],
+            "valid": [args.valid_start, args.valid_end],
             "test": [bt_start, bt_end]
         }
     )

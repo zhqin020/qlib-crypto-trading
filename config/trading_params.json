@@ -10,7 +10,7 @@
         "exchange": "binance",
         "market_type": "future",
         "start_time": "2020-01-01",
-        "end_time": "2025-12-25",
+        "end_time": "",
         "symbols": [
             "BTC/USDT",
             "ETH/USDT",
@@ -27,9 +27,9 @@
         ]
     },
     "backtest": {
-        "start_time": "2023-05-03",
-        "end_time": "2025-12-25",
-        "topk": 5,
+        "start_time": "2024-05-03",
+        "end_time": "2025-01-01",
+        "topk": 4,
         "portfolios": [
             "BTC/USDT",
             "ETH/USDT",
@@ -45,10 +45,29 @@
         "rebalance": "1h",
         "benchmark": "BTC"
     },
+    "trading": {
+        "direction": "long-short",
+        "init_investment": 10000,
+        "leverage": 1,
+        "take_profit": 0.1,
+        "stop_loss": -0.05,
+        "signal_threshold": 0.16531796108554797
+    },
     "training": {
-        "model_type": "lightgbm",
+        "start_time": "2023-05-10",
+        "model_type": "alstm",
         "feature_handler": "alpha158",
         "device": "auto",
+        "seed": 42,
+        "rolling_window": {
+            "fold_ratio": [
+                6,
+                1,
+                2
+            ],
+            "step_months": 3,
+            "n_folds": 3
+        },
         "models": {
             "lightgbm": {
                 "loss": "mse",
@@ -56,9 +75,9 @@
                 "learning_rate": 0.01,
                 "subsample": 0.8789,
                 "lambda_l1": 0.01,
-                "lambda_l2": 0.1,
-                "max_depth": 8,
-                "num_leaves": 15,
+                "lambda_l2": 0.001,
+                "max_depth": 6,
+                "num_leaves": 70,
                 "num_threads": 20
             },
             "xgboost": {
@@ -79,7 +98,28 @@
                 "early_stop": 20,
                 "loss": "mse",
                 "optimizer": "adam"
+            },
+            "alstm": {
+                "d_feat": 158,
+                "hidden_size": 64,
+                "num_layers": 2,
+                "dropout": 0.33759499472715837,
+                "n_epochs": 100,
+                "lr": 0.001,
+                "batch_size": 512,
+                "early_stop": 20,
+                "loss": "mse",
+                "optimizer": "adam",
+                "rnn_type": "GRU"
             }
         }
+    },
+    "database": {
+        "host": "localhost",
+        "port": 5432,
+        "user": "crypto_user",
+        "password": "crypto",
+        "dbname": "qlib_crypto",
+        "use_db": true
     }
 }

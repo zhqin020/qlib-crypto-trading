@@ -27,6 +27,7 @@ class CryptoLongShortStrategy(WeightStrategyBase):
         direction: str = "long",
         take_profit: Optional[float] = None,
         stop_loss: Optional[float] = None,
+        signal_threshold: float = 0.0,
         risk_degree: float = 1.0,
         **kwargs
     ):
@@ -35,6 +36,7 @@ class CryptoLongShortStrategy(WeightStrategyBase):
         self.direction = direction.lower()
         self.take_profit = take_profit
         self.stop_loss = stop_loss
+        self.signal_threshold = signal_threshold
         
         # Track entry prices for SL/TP
         # {instrument: {"price": float, "side": int}}
@@ -58,7 +60,15 @@ class CryptoLongShortStrategy(WeightStrategyBase):
         # and prevent re-entry in the same bar.
         excl_instruments = self._check_risk_hits(current, trade_start_time, trade_end_time)
 
-        # 3. Rank scores
+        # 3. Filter by signal threshold (Absolute value)
+        # If score is below threshold, it's considered noise and ignored
+        if self.signal_threshold > 0:
+            score = score[score.abs() >= self.signal_threshold]
+        
+        if score.empty:
+            return {}
+
+        # 4. Rank scores
         score = score.sort_values(ascending=False)
         
         target_weights = {}
@@ -79,21 +89,21 @@ class CryptoLongShortStrategy(WeightStrategyBase):
                     target_weights[inst] = unit_weight
                 
         elif self.direction == "long-short":
-            topk_idx = [i for i in score.head(self.topk * 2).index if i not in excl_instruments][:self.topk]
-            bottomk_idx = [i for i in score.tail(self.topk * 2).index if i not in excl_instruments][:self.topk]
+            # 1. Filter out excluded instruments
+            valid_scores = score[~score.index.isin(excl_instruments)]
             
-            # Gross exposure 1.0
-            if topk_idx or bottomk_idx:
-                l_count = len(topk_idx)
-                s_count = len(bottomk_idx)
-                if l_count > 0:
-                    l_unit = 0.5 / l_count
-                    for inst in topk_idx:
-                        target_weights[inst] = l_unit
-                if s_count > 0:
-                    s_unit = -0.5 / s_count
-                    for inst in bottomk_idx:
-                        target_weights[inst] = s_unit
+            # 2. Sort by Absolute Value (Confidence)
+            # This identifies the instruments the model is MOST SURE about, regardless of direction
+            abs_score = valid_scores.abs().sort_values(ascending=False)
+            topk_idx = abs_score.head(self.topk).index
+            
+            if len(topk_idx) > 0:
+                # Each selected instrument gets 1/topk share of the total exposure
+                unit_weight = 1.0 / self.topk
+                for inst in topk_idx:
+                    # Direction is determined by the sign of the original prediction
+                    side = 1 if valid_scores[inst] >= 0 else -1
+                    target_weights[inst] = side * unit_weight
         
         return target_weights
 

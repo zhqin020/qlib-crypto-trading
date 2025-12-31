@@ -35,18 +35,21 @@ def main():
     data_cfg = config.get("data", {})
     default_freq = data_cfg.get("interval", "1d")
 
-    parser = argparse.ArgumentParser(description="Convert CSV data to Qlib binary format")
-    parser.add_argument("--freq", default=default_freq, help="Data frequency (1d, 1h, etc.)")
-    parser.add_argument("--market-type", default=data_cfg.get("market_type", "spot"), help="Market type (spot, future, etc.)")
+    parser = argparse.ArgumentParser(
+        description="Convert raw CSV crypto data into Qlib's binary format",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
+    parser.add_argument("--freq", default=default_freq, choices=["1d", "1h", "15min", "5min", "1min"], help="Data frequency to convert")
+    parser.add_argument("--market-type", default=data_cfg.get("market_type", "spot"), choices=["spot", "future", "swap"], help="Market category (filters input CSVs)")
     
-    args = parser.parse_args()
+    # Pre-calculate default qlib_dir for help message
+    # Re-read basics for help formatting
+    base_args, _ = parser.parse_known_args()
+    qlib_dir_suffix = f"_{base_args.market_type}" if base_args.market_type != "spot" else ""
+    default_qlib_path = f"data/qlib/crypto_{base_args.freq}{qlib_dir_suffix}"
     
-    qlib_dir_suffix = f"_{args.market_type}" if args.market_type != "spot" else ""
-    qlib_dir = f"data/qlib/crypto_{args.freq}{qlib_dir_suffix}"
+    parser.add_argument("--qlib_dir", default=default_qlib_path, help="Output directory for generated Qlib binary data")
     
-    # Allow override via cmd line
-    parser.add_argument("--qlib_dir", default=qlib_dir, help="Output directory for Qlib data")
-    # Re-parse to pick up qlib_dir if provided
     args = parser.parse_args()
 
     print(f"Converting crypto data to Qlib format (freq={args.freq}, market_type={args.market_type})...")

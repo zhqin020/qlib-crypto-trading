@@ -64,6 +64,7 @@ async def run_backtest(
     direction: str = "long",
     init_investment: float = 100000,
     leverage: int = 1,
+    signal_threshold: float = 0.0,
     start_time: Optional[str] = None,
     end_time: Optional[str] = None,
     benchmark: Optional[str] = None,
@@ -132,13 +133,16 @@ async def run_backtest(
                 with open(model_meta_file) as f:
                     model_meta = json.load(f)
 
-            # Check if we should automatically switch dataset based on model
-            if dataset_ref == "crypto" and model_meta.get("dataset") == "crypto_1h":
-                logger.info("Auto-switching to 'crypto_1h' dataset to match model training frequency.")
-                dataset_ref = "crypto_1h"
-                qlib_dir = project_root / "data" / "qlib" / dataset_ref
+            # Step 1: Auto-switch dataset based on model metadata
+            trained_dataset = model_meta.get("dataset")
+            if trained_dataset and trained_dataset != dataset_ref:
+                # Special case: 'crypto' -> 'crypto_1h' covers both 'crypto_1h' and 'crypto_1h_future'
+                if dataset_ref == "crypto" and trained_dataset.startswith("crypto_1h"):
+                    logger.info(f"Auto-switching dataset from '{dataset_ref}' to '{trained_dataset}' to match model training.")
+                    dataset_ref = trained_dataset
+                    qlib_dir = project_root / "data" / "qlib" / dataset_ref
 
-            # Step 1: Validate dataset
+            # Step 1.1: Validate dataset
             await monitor.update_progress(process_id, 14.3, f"Validating dataset '{dataset_ref}'", 1)
 
             # Validate dataset exists
@@ -369,6 +373,7 @@ async def run_backtest(
                             "direction": direction,
                             "take_profit": take_profit,
                             "stop_loss": stop_loss,
+                            "signal_threshold": signal_threshold,
                             "risk_degree": float(leverage),
                         },
                     }

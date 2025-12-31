@@ -55,15 +55,14 @@ Most trading parameters (symbols, interval, exchange, market type) are managed i
 ```json
 {
     "trading": {
-        "direction": "long-short",
-        "init_investment": 10000,
-        "leverage": 1,
         "take_profit": 0.1,
-        "stop_loss": -0.05
+        "stop_loss": -0.05,
+        "signal_threshold": 0.15
     }
 }
 ```
-*   `direction`: Supports `long`, `short`, and `long-short`.
+*   `direction`: Supports `long`, `short`, and `long-short` (weighted by absolute confidence).
+*   `signal_threshold`: Only trade instruments with `abs(score) >= threshold`. Filters out low-conviction noise.
 *   `take_profit`/`stop_loss`: Percentage-based exit triggers.
 *Note: Scripts will use these values as defaults unless overridden via command-line arguments.*
 
@@ -136,6 +135,15 @@ python scripts/run_backtest.py <MODEL_ID>
 - **Sharpe/Sortino Ratio**: Risk-adjusted performance.
 - **Max Drawdown**: Worst peak-to-trough decline.
 - **Calmar Ratio**: Return over Max DD.
+- **WPS**: Weighted Performance Score used during tuning.
+
+### Step C: Signal Diagnostics
+Analyze the relationship between predicted scores and actual returns to identify model failure regimes.
+```bash
+# Analyze IC, Rank IC, and Accuracy by Threshold for a specific period
+python scripts/analyze_signal_accuracy.py --start 2024-06-09 --end 2024-08-08
+```
+*Outputs correlation metrics and saves a visualization plot to `logs/`.*
 
 ---
 
@@ -173,6 +181,7 @@ python scripts/tune_hyperparameters.py --model alstm --trials 50
 The tuner now optimizes not just model weights (learning rate, hidden size), but also **Strategy Parameters**:
 - **topk**: Optimal number of assets to hold.
 - **leverage**: Optimal leverage based on model confidence and risk tolerance.
+- **signal_threshold**: Optimal entry barrier to filter out market noise.
 
 ### Outputs
 - `config/trading_params.best.json`: The best parameter set found.

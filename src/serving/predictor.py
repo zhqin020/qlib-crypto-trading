@@ -67,7 +67,7 @@ async def predict_today(
 
     # Create the actual work as a separate coroutine
     async def do_prediction():
-        nonlocal process_started
+        nonlocal process_started, dataset_ref
         try:
             # Start process monitoring
             await monitor.start_process(process_id, "prediction", total_steps=total_steps)
@@ -155,8 +155,27 @@ async def predict_today(
 
                 # Load model metadata
                 meta_file = models_dir / f"{model_id}_meta.json"
-                with open(meta_file) as f:
-                    model_meta = json.load(f)
+                if not meta_file.exists():
+                    logger.warning(f"Metadata for model {model_id} not found. Using provided dataset_ref.")
+                    model_meta = {}
+                else:
+                    with open(meta_file) as f:
+                        model_meta = json.load(f)
+
+                # Step 3.5: Auto-switch dataset based on model metadata
+                trained_dataset = model_meta.get("dataset")
+                if trained_dataset and trained_dataset != dataset_ref:
+                    # Special case: 'crypto' -> 'crypto_1h' or 'crypto_1h_future'
+                    if dataset_ref == "crypto" and trained_dataset.startswith("crypto_1h"):
+                        logger.info(f"Auto-switching dataset from '{dataset_ref}' to '{trained_dataset}' to match model training.")
+                        dataset_ref = trained_dataset
+                        qlib_dir = project_root / "data" / "qlib" / dataset_ref
+                        
+                        # Re-validate new dataset
+                        if not qlib_dir.exists():
+                            logger.error(f"Auto-switched dataset not found: {qlib_dir}")
+                            await monitor.fail_process(process_id, f"Trained dataset '{dataset_ref}' not found")
+                            return {"error": f"Trained dataset {dataset_ref} not found"}
 
                 # Use provided date or default to today
                 if prediction_date:
