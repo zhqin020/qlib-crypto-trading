@@ -2418,6 +2418,7 @@
                     lastEventTimestamp: null,
                     // Process state versioning for race condition prevention
                     processStateVersions: {},
+                    consecutiveWsFailures: 0,
                     forms: {
                         data: {
                             symbol: "BTC/USDT",
@@ -2771,6 +2772,7 @@
 
                     this.ws.onopen = () => {
                         this.connected = true;
+                        this.consecutiveWsFailures = 0;
                         this.addActivity("WebSocket connected", "success");
 
                         // Request event history replay if we have a last timestamp
@@ -2917,8 +2919,17 @@
                         return;
                     }
 
+                    this.consecutiveWsFailures++;
+                    if (this.consecutiveWsFailures > 10) {
+                        this.showToast('error', 'Too many connection failures. Authentication may be invalid.', 10000);
+                        this.clearWsToken();
+                        this.consecutiveWsFailures = 0;
+                        return;
+                    }
+
                     if (this.wsAuth.token) {
-                        setTimeout(() => reconnectFn(), 3000);
+                        const delay = Math.min(3000 * this.consecutiveWsFailures, 30000);
+                        setTimeout(() => reconnectFn(), delay);
                     }
                 },
                 handleEvent(event) {

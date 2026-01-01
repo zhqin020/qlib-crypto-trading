@@ -16,6 +16,9 @@ import json
 import asyncio
 import re
 from datetime import datetime, timezone
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from ui.events import get_event_broadcaster
 from monitoring.process_monitor import monitor, ProcessInfo

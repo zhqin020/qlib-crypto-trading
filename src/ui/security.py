@@ -10,6 +10,7 @@ import time
 import hashlib
 import secrets
 import logging
+from dotenv import load_dotenv
 from utils.logging_config import get_logger
 from typing import Optional, Dict, Set, Tuple
 from dataclasses import dataclass, field
@@ -17,6 +18,8 @@ from datetime import datetime, timedelta, timezone
 from fastapi import WebSocket, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import json
+
+load_dotenv()
 
 logger = get_logger(__name__)
 
@@ -114,8 +117,8 @@ class ConnectionManager:
                 if ts > cutoff_time
             ]
 
-            # More than 5 failed attempts in 5 minutes = blocked
-            if len(self._failed_auth_attempts[identifier]) >= 5:
+            # More than 20 failed attempts in 5 minutes = blocked
+            if len(self._failed_auth_attempts[identifier]) >= 20:
                 return False
 
         return True

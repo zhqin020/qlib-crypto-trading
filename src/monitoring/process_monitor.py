@@ -172,8 +172,24 @@ class ProcessMonitor:
             self._redis_pubsub = None
             self._redis_listener_task: Optional[asyncio.Task] = None
             self._node_id = f"{socket.gethostname()}-{os.getpid()}"
+            # Allow disabling remote monitoring via environment variable or config file
+            env_remote = os.getenv("REMOTE_MONITORING_ENABLED")
+            if env_remote is not None:
+                self._remote_enabled = env_remote.lower() == "true"
+            else:
+                # Try reading from config/trading_params.json
+                self._remote_enabled = True # Default
+                try:
+                    config_path = Path(__file__).parent.parent.parent / "config" / "trading_params.json"
+                    if config_path.exists():
+                        import json
+                        with open(config_path, 'r') as f:
+                            config_data = json.load(f)
+                            self._remote_enabled = config_data.get("system", {}).get("remote_monitoring", True)
+                except Exception as config_err:
+                    logger.debug("Failed to read remote_monitoring from config: %s", config_err)
 
-            if self._redis_url:
+            if self._redis_url and self._remote_enabled:
                 try:
                     import redis.asyncio as redis_async  # type: ignore
 
