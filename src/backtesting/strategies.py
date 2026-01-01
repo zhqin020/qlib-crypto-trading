@@ -57,6 +57,7 @@ class CryptoLongShortStrategy(WeightStrategyBase):
         self.stop_loss = stop_loss
         self.signal_threshold = signal_threshold
         self.benchmark = benchmark
+        self.force_regime = None # Optional override for live mode
         # Resolved data frequency (e.g. '60min'). If not provided, default to 60min.
         self.data_freq = data_freq or "60min"
         
@@ -96,61 +97,67 @@ class CryptoLongShortStrategy(WeightStrategyBase):
         # For simplicity/speed in backtest, we might infer from the 'score' index dates?
         # Actually, best is to check if we can get BTC price.
         
-        regime = MarketRegime.UNKNOWN
+        regime = MarketRegime.BULL # Default
+        risk_score = 1.0
+        metrics = {}
         
-        try:
-            # We try to get BTC close history ending at trade_start_time
-            # Get 100 days lookback for EMA60
-            lookback = pd.Timedelta(days=100)
-            
-            # Note: qlib strategies usually don't have direct access to "D" (data provider) efficiently in loop?
-            # But self.trade_exchange should support get_close?
-            # The easiest way is to use 'common_infra' or D if available.
-            from qlib.data import D
-            
-            # Find the BTC instrument name in our universe (e.g. BTC, BTC/USDT)
-            # We assume self.benchmark is correct.
-            # D.features is relatively fast if cached
-            
-            # Normalize benchmark name for Qlib query.
-            # Try uppercase/base forms first (most datasets use uppercase symbols),
-            # then try common exchange suffix formats and lowercase fallbacks.
-            up = self.benchmark.upper()
-            low = self.benchmark.lower()
-            bench_candidates = [
-                up,
-                f"{up}/USDT",
-                f"{up}_USDT",
-                low,
-                f"{low}/usdt",
-            ]
-            btc_df = pd.DataFrame()
-            
-            for bench in bench_candidates:
-                try:
-                    df = D.features([bench], ['$close'], start_time=trade_start_time - lookback, end_time=trade_start_time, freq=self.data_freq)
-                    if not df.empty:
-                        btc_df = df
-                        # print(f"Found benchmark data for {bench}")
-                        break
-                except Exception:
-                    # Continue to next candidate if this one fails (avoid noisy stack traces)
-                    continue
-            
-            if not btc_df.empty:
-                # D returns MultiIndex (instrument, datetime). Reset to get clean timeseries
-                if isinstance(btc_df.index, pd.MultiIndex):
-                    # Reset the instrument level (level 0) to get a datetime index
-                    btc_df = btc_df.reset_index(level=0, drop=True)
+        if self.force_regime:
+            regime = self.force_regime
+            logger.info(f"[Regime] Using Forced Regime: {regime.value}")
+        else:
+            try:
+                # We try to get BTC close history ending at trade_start_time
+                # Get 100 days lookback for EMA60
+                lookback = pd.Timedelta(days=100)
                 
-                # Detect
-                regime, risk_score, metrics = self.detector.detect(btc_df)
-                logger.info(f"[Regime] Date: {trade_start_time} | Regime: {regime.value} | Score: {risk_score:.2f} | Close: {metrics.get('price'):.2f}")
-            else:
-                logger.warning(f"[Regime] WARNING: No data for {self.benchmark} at {trade_start_time}")
+                # Note: qlib strategies usually don't have direct access to "D" (data provider) efficiently in loop?
+                # But self.trade_exchange should support get_close?
+                # The easiest way is to use 'common_infra' or D if available.
+                from qlib.data import D
                 
-        except Exception as e:
-            logger.warning(f"Regime detection failed: {e}")
+                # Find the BTC instrument name in our universe (e.g. BTC, BTC/USDT)
+                # We assume self.benchmark is correct.
+                # D.features is relatively fast if cached
+                
+                # Normalize benchmark name for Qlib query.
+                # Try uppercase/base forms first (most datasets use uppercase symbols),
+                # then try common exchange suffix formats and lowercase fallbacks.
+                up = self.benchmark.upper()
+                low = self.benchmark.lower()
+                bench_candidates = [
+                    up,
+                    f"{up}/USDT",
+                    f"{up}_USDT",
+                    low,
+                    f"{low}/usdt",
+                ]
+                btc_df = pd.DataFrame()
+                
+                for bench in bench_candidates:
+                    try:
+                        df = D.features([bench], ['$close'], start_time=trade_start_time - lookback, end_time=trade_start_time, freq=self.data_freq)
+                        if not df.empty:
+                            btc_df = df
+                            # print(f"Found benchmark data for {bench}")
+                            break
+                    except Exception:
+                        # Continue to next candidate if this one fails (avoid noisy stack traces)
+                        continue
+                
+                if not btc_df.empty:
+                    # D returns MultiIndex (instrument, datetime). Reset to get clean timeseries
+                    if isinstance(btc_df.index, pd.MultiIndex):
+                        # Reset the instrument level (level 0) to get a datetime index
+                        btc_df = btc_df.reset_index(level=0, drop=True)
+                    
+                    # Detect
+                    regime, risk_score, metrics = self.detector.detect(btc_df)
+                    logger.info(f"[Regime] Date: {trade_start_time} | Regime: {regime.value} | Score: {risk_score:.2f} | Close: {metrics.get('price'):.2f}")
+                else:
+                    logger.warning(f"[Regime] WARNING: No data for {self.benchmark} at {trade_start_time}")
+                    
+            except Exception as e:
+                logger.warning(f"Regime detection failed: {e}")
 
         # 1. Adjust Strategy based on Regime
         current_direction = self.orig_direction

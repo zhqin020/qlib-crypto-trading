@@ -28,7 +28,8 @@
     - [x] **Order Executor**: Implement OMS logic (`src/serving/oms.py`) and Web API endpoints.
     - [x] **OMS Web UI**: Created real-time monitoring dashboard for Account/Positions/Orders.
     - [x] **Live Loop Prototype**: Created `src/serving/live_loop.py` for cycle orchestration.
-- [ ] **Data Sync & automation**: Integrate APScheduler for automated hourly cycles.
+- [x] **Data Sync & automation**: Integrated `LiveTradingLoop` into `uvicorn` background tasks for automated cycles.
+- [ ] **Real Model Integration**: Replace mocks in `live_loop.py` with actual trained Qlib model predictions.
 - [ ] **Transaction Cost Modeling**: More precise fee estimation for high-frequency strategies.
 - [ ] **Portfolio Optimization**: Implement Markowitz or Black-Litterman for dynamic asset allocation.
 - [ ] **Investigation: 2024H2 Model Decay**: Analyze why Alpha158 factors lose predictive power in the late 2024 dominant-BTC market regime.

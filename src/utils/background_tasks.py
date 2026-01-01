@@ -58,6 +58,77 @@ class BackgroundTaskManager:
         # Start auto-save task
         self._tasks.append(asyncio.create_task(self._auto_save_state()))
 
+        # Start Trading Loop if enabled
+        trading_cfg = await self._get_trading_config()
+        enabled = os.getenv("TRADING_LOOP_ENABLED", str(trading_cfg.get("live_loop_enabled", "false"))).lower() == "true"
+        
+        if enabled:
+            if os.getenv("PYTEST_CURRENT_TEST"):
+                logger.debug("Skipping trading loop during tests")
+            else:
+                interval = int(os.getenv("TRADING_LOOP_INTERVAL", trading_cfg.get("live_loop_interval", 3600)))
+                self._tasks.append(asyncio.create_task(self._trading_loop(interval)))
+                logger.info(f"Automated trading loop started with interval {interval}s")
+        else:
+            logger.info("Automated trading loop is disabled")
+
+    async def _get_trading_config(self):
+        """Helper to load trading config from file"""
+        try:
+            from pathlib import Path
+            import json
+            config_path = Path("config/trading_params.json")
+            if config_path.exists():
+                with open(config_path, 'r') as f:
+                    return json.load(f).get("trading", {})
+        except Exception as e:
+            logger.error(f"Failed to load trading config: {e}")
+        return {}
+
+    async def _trading_loop(self, interval: int):
+        """Background loop for real-time trading execution"""
+        from serving.live_loop import LiveTradingLoop
+        import time
+        
+        # Initialize loop
+        try:
+            loop = LiveTradingLoop()
+        except Exception as e:
+            logger.error(f"Failed to initialize LiveTradingLoop: {e}", exc_info=True)
+            return
+
+        while self._running:
+            start_time = time.time()
+            try:
+                # Monitored process for UI tracking
+                from monitoring.process_monitor import monitor
+                process_id = f"trading_cycle_{int(time.time())}"
+                
+                await monitor.start_process(process_id, "trading")
+                await monitor.update_progress(process_id, 10, "Starting cycle")
+                
+                await loop.run_once()
+                
+                await monitor.complete_process(process_id, {"status": "success"})
+                
+            except Exception as e:
+                logger.error(f"Trading cycle failed: {e}", exc_info=True)
+                # Fail in monitor if it was started
+                try:
+                    await monitor.fail_process(process_id, str(e))
+                except:
+                    pass
+            
+            elapsed = time.time() - start_time
+            sleep_time = max(10, interval - elapsed) # Min 10s safety
+            
+            logger.info(f"Trading cycle complete. Next run in {sleep_time:.2f}s")
+            
+            try:
+                await asyncio.sleep(sleep_time)
+            except asyncio.CancelledError:
+                break
+
     async def stop(self):
         """Stop all background tasks"""
         self._running = False
