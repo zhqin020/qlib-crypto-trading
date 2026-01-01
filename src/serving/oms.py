@@ -84,8 +84,8 @@ class LocalOrderManager:
         account.equity = account.balance + total_unrealized_pnl
         
         session.commit()
-        session.close()
         logger.info(f"Market Sync Complete. Balance: {account.balance:.2f}, Equity: {account.equity:.2f}")
+        session.close()
 
     def execute_rebalance(self, target_weights: Dict[str, float], current_prices: Dict[str, float]):
         """

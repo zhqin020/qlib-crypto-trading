@@ -32,7 +32,24 @@ class CryptoLongShortStrategy(WeightStrategyBase):
         data_freq: Optional[str] = None,
         **kwargs
     ):
+        # Remove arguments that might cause issues if passed to super() and not expected
+        self.kwargs = kwargs
+        # leverage is stored in kwargs by Qlib config usually, but we might have passed it explicitly.
+        # Ensure we don't pass 'leverage' to BaseStrategy if it doesn't accept it.
+        # But BaseStrategy generally accepts **kwargs.
+        # However, WeightedStrategyBase.__init__ calls super().__init__(**kwargs).
+        # The error says: BaseStrategy.__init__() got unexpected keyword 'leverage'.
+        # This means BaseStrategy doesn't simply store all kwargs.
+        
+        # We should pop 'leverage' and 'instrument_config' from kwargs before calling super
+        leverage = kwargs.pop('leverage', 1.0)
+        inst_config = kwargs.pop('instrument_config', {})
+        
         super().__init__(signal=signal, risk_degree=risk_degree, **kwargs)
+        
+        # Restore them for our use
+        self.kwargs['leverage'] = leverage
+        self.instrument_config = inst_config
         self.topk = topk
         self.orig_direction = direction.lower() # Store original config
         self.direction = self.orig_direction
@@ -128,11 +145,9 @@ class CryptoLongShortStrategy(WeightStrategyBase):
                 
                 # Detect
                 regime, risk_score, metrics = self.detector.detect(btc_df)
-                # logger.debug(f"Date: {trade_start_time} | Regime: {regime.value} | Score: {risk_score:.2f}")
-                print(f"[Regime] Date: {trade_start_time} | Regime: {regime.value} | Score: {risk_score:.2f} | Close: {metrics.get('price'):.2f}")
+                logger.info(f"[Regime] Date: {trade_start_time} | Regime: {regime.value} | Score: {risk_score:.2f} | Close: {metrics.get('price'):.2f}")
             else:
-                logger.warning(f"Could not fetch benchmark ({self.benchmark}) data for regime detection.")
-                print(f"[Regime] WARNING: No data for {self.benchmark} at {trade_start_time}")
+                logger.warning(f"[Regime] WARNING: No data for {self.benchmark} at {trade_start_time}")
                 
         except Exception as e:
             logger.warning(f"Regime detection failed: {e}")

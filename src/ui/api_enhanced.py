@@ -28,6 +28,9 @@ from ui.security import (
     validate_api_key,
     create_ws_token,
 )
+from serving.oms import LocalOrderManager
+from serving.schema import OrderSide
+import os
 
 logger = get_logger(__name__)
 
@@ -1842,6 +1845,90 @@ async def websocket_process_updates(websocket: WebSocket, process_id: str):
         except:
             pass
 
+
+# -------------------------------------------------------------------------
+# OMS / Live Trading Endpoints
+# -------------------------------------------------------------------------
+
+# Helper to get OMS instance
+def get_oms() -> LocalOrderManager:
+    db_url = os.getenv("DATABASE_URL", "postgresql://crypto_user:crypto@localhost:5432/qlib_crypto")
+    # Fix for local development when .env contains docker-compose service name
+    if "@postgres" in db_url:
+        db_url = db_url.replace("@postgres", "@localhost")
+    return LocalOrderManager(db_url)
+
+@app.get("/api/live/account")
+async def get_live_account(account_name: str = "OKX_Paper"):
+    """Get live execution account details"""
+    oms = get_oms()
+    session = oms.Session()
+    try:
+        account = oms._get_account(session)
+        if not account:
+            raise HTTPException(status_code=404, detail="Account not found")
+        
+        return {
+            "id": str(account.id),
+            "name": account.name,
+            "balance": account.balance,
+            "equity": account.equity,
+            "updated_at": account.updated_at
+        }
+    finally:
+        session.close()
+
+@app.get("/api/live/positions")
+async def get_live_positions(account_name: str = "OKX_Paper"):
+    """Get open positions"""
+    oms = get_oms()
+    session = oms.Session()
+    try:
+        account = oms._get_account(session)
+        if not account:
+            return []
+            
+        positions = []
+        for p in account.positions:
+            positions.append({
+                "symbol": p.symbol,
+                "amount": p.amount,
+                "entry_price": p.entry_price,
+                "current_price": p.current_price,
+                "unrealized_pnl": p.unrealized_pnl,
+                "value": p.amount * p.current_price
+            })
+        return positions
+    finally:
+        session.close()
+
+@app.get("/api/live/orders")
+async def get_live_orders(account_name: str = "OKX_Paper", limit: int = 50):
+    """Get recent orders"""
+    oms = get_oms()
+    session = oms.Session()
+    from serving.schema import Order
+    try:
+        account = oms._get_account(session)
+        if not account:
+            return []
+            
+        orders_query = session.query(Order).filter_by(account_id=account.id)\
+            .order_by(Order.created_at.desc()).limit(limit).all()
+            
+        return [{
+            "id": str(o.id),
+            "symbol": o.symbol,
+            "side": o.side.value,
+            "type": o.type,
+            "amount": o.amount,
+            "price": o.price,
+            "fee": o.fee,
+            "status": o.status.value,
+            "created_at": o.created_at
+        } for o in orders_query]
+    finally:
+        session.close()
 
 def get_enhanced_dashboard_html() -> str:
     """Return enhanced dashboard HTML with WebSocket support"""
