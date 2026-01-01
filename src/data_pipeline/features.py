@@ -77,7 +77,8 @@ async def create_feature_set(
     dataset_ref: str,
     handler: str,
     params: Optional[Dict[str, Any]] = None,
-    processors: Optional[List[Dict[str, Any]]] = None
+    processors: Optional[List[Dict[str, Any]]] = None,
+    instrument_embedding: bool = False
 ) -> Dict[str, Any]:
     """
     Create a feature set configuration
@@ -87,12 +88,7 @@ async def create_feature_set(
         handler: Handler type (alpha158, alpha360, custom)
         params: Custom parameters for handler
         processors: Data processors to apply
-
-    Returns:
-        Feature set metadata
-
-    Raises:
-        ValidationError: If input validation fails
+        instrument_embedding: Whether to inject instrument ID embedding
     """
     try:
         # Validate inputs
@@ -113,7 +109,7 @@ async def create_feature_set(
                 if not isinstance(processor, dict):
                     raise ValidationError("Each processor must be a dictionary")
 
-        logger.info(f"Creating feature set: dataset={dataset_ref}, handler={handler}")
+        logger.info(f"Creating feature set: dataset={dataset_ref}, handler={handler}, embedding={instrument_embedding}")
 
         project_root = Path(__file__).parent.parent.parent
         config_dir = project_root / "config" / "features"
@@ -139,10 +135,23 @@ async def create_feature_set(
         # Override processors if provided
         if processors:
             config["kwargs"]["infer_processors"] = processors
+            
+        # Add Instrument Embedding Processor if requested
+        if instrument_embedding:
+            # Append to infer_processors
+            if "infer_processors" not in config["kwargs"]:
+                config["kwargs"]["infer_processors"] = []
+                
+            config["kwargs"]["infer_processors"].append({
+                "class": "HashInstrumentProcessor",
+                "module_path": "data_pipeline.processors",
+                "kwargs": {"num_embeddings": 100}
+            })
 
         # Create feature set metadata
+        feature_set_name_suffix = "_emb" if instrument_embedding else ""
         feature_set = {
-            "name": f"{handler}_{dataset_ref}",
+            "name": f"{handler}_{dataset_ref}{feature_set_name_suffix}",
             "dataset": dataset_ref,
             "handler": handler,
             "config": config,

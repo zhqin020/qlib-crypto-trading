@@ -12,12 +12,11 @@ from qlib.backtest.position import Position
 
 logger = logging.getLogger(__name__)
 
+from regime.detector import MarketRegimeDetector, MarketRegime
+
 class CryptoLongShortStrategy(WeightStrategyBase):
     """
-    Enhanced Weight-based Strategy for Crypto:
-    - Supports Direction: long, short, long-short
-    - Supports Top-K ranking
-    - Supports Risk Control: Take Profit (TP), Stop Loss (SL)
+    Enhanced Weight-based Strategy for Crypto with Regime Detection.
     """
 
     def __init__(
@@ -29,22 +28,43 @@ class CryptoLongShortStrategy(WeightStrategyBase):
         stop_loss: Optional[float] = None,
         signal_threshold: float = 0.0,
         risk_degree: float = 1.0,
+        benchmark: str = "BTC",
+        data_freq: Optional[str] = None,
         **kwargs
     ):
         super().__init__(signal=signal, risk_degree=risk_degree, **kwargs)
         self.topk = topk
-        self.direction = direction.lower()
+        self.orig_direction = direction.lower() # Store original config
+        self.direction = self.orig_direction
         self.take_profit = take_profit
         self.stop_loss = stop_loss
         self.signal_threshold = signal_threshold
+        self.benchmark = benchmark
+        # Resolved data frequency (e.g. '60min'). If not provided, default to 60min.
+        self.data_freq = data_freq or "60min"
         
-        # Track entry prices for SL/TP
-        # {instrument: {"price": float, "side": int}}
+        # Initialize Regime Detector
+        self.detector = MarketRegimeDetector()
         self.entry_info = {} 
+
+        # Instrument-specific configuration
+        self.instrument_config = kwargs.get("instrument_config", {})
+
+    def _get_param(self, instrument: str, param: str, default: Any) -> Any:
+        """Get parameter for a specific instrument, falling back to default/global."""
+        if instrument in self.instrument_config:
+            return self.instrument_config[instrument].get(param, default)
+        
+        # Try simplified name (e.g. BTC for BTC/USDT)
+        base_symbol = instrument.split("/")[0] if "/" in instrument else instrument
+        if base_symbol in self.instrument_config:
+            return self.instrument_config[base_symbol].get(param, default)
+            
+        return default 
 
     def generate_target_weight_position(self, score: pd.Series, current: Position, trade_start_time: pd.Timestamp, trade_end_time: pd.Timestamp) -> Dict[str, float]:
         """
-        Generate target weights based on predictions and direction
+        Generate target weights based on predictions and REGIME
         """
         if isinstance(score, pd.DataFrame):
             score = score.iloc[:, 0]
@@ -52,58 +72,172 @@ class CryptoLongShortStrategy(WeightStrategyBase):
         if score is None or score.empty:
             return {}
 
-        # 1. Update Entry Prices for new/existing positions
+        # 0. Market Regime Detection
+        # We need BTC history to detect regime.
+        # Qlib's 'score' often contains the benchmark if it's in the universe.
+        # Or we can try to fetch it via the Exchange if possible (trade_exchange).
+        # For simplicity/speed in backtest, we might infer from the 'score' index dates?
+        # Actually, best is to check if we can get BTC price.
+        
+        regime = MarketRegime.UNKNOWN
+        
+        try:
+            # We try to get BTC close history ending at trade_start_time
+            # Get 100 days lookback for EMA60
+            lookback = pd.Timedelta(days=100)
+            
+            # Note: qlib strategies usually don't have direct access to "D" (data provider) efficiently in loop?
+            # But self.trade_exchange should support get_close?
+            # The easiest way is to use 'common_infra' or D if available.
+            from qlib.data import D
+            
+            # Find the BTC instrument name in our universe (e.g. BTC, BTC/USDT)
+            # We assume self.benchmark is correct.
+            # D.features is relatively fast if cached
+            
+            # Normalize benchmark name for Qlib query.
+            # Try uppercase/base forms first (most datasets use uppercase symbols),
+            # then try common exchange suffix formats and lowercase fallbacks.
+            up = self.benchmark.upper()
+            low = self.benchmark.lower()
+            bench_candidates = [
+                up,
+                f"{up}/USDT",
+                f"{up}_USDT",
+                low,
+                f"{low}/usdt",
+            ]
+            btc_df = pd.DataFrame()
+            
+            for bench in bench_candidates:
+                try:
+                    df = D.features([bench], ['$close'], start_time=trade_start_time - lookback, end_time=trade_start_time, freq=self.data_freq)
+                    if not df.empty:
+                        btc_df = df
+                        # print(f"Found benchmark data for {bench}")
+                        break
+                except Exception:
+                    # Continue to next candidate if this one fails (avoid noisy stack traces)
+                    continue
+            
+            if not btc_df.empty:
+                # D returns MultiIndex (instrument, datetime). Reset to get clean timeseries
+                if isinstance(btc_df.index, pd.MultiIndex):
+                    # Reset the instrument level (level 0) to get a datetime index
+                    btc_df = btc_df.reset_index(level=0, drop=True)
+                
+                # Detect
+                regime, risk_score, metrics = self.detector.detect(btc_df)
+                # logger.debug(f"Date: {trade_start_time} | Regime: {regime.value} | Score: {risk_score:.2f}")
+                print(f"[Regime] Date: {trade_start_time} | Regime: {regime.value} | Score: {risk_score:.2f} | Close: {metrics.get('price'):.2f}")
+            else:
+                logger.warning(f"Could not fetch benchmark ({self.benchmark}) data for regime detection.")
+                print(f"[Regime] WARNING: No data for {self.benchmark} at {trade_start_time}")
+                
+        except Exception as e:
+            logger.warning(f"Regime detection failed: {e}")
+
+        # 1. Adjust Strategy based on Regime
+        current_direction = self.orig_direction
+        
+        if regime == MarketRegime.BEAR:
+            # In Bear market: ONLY allowed to SHORT
+            # Even if configured as "long-short" or "long", we force "short"
+            # Or "short-only" mode where we ignore long signals.
+            # User wants: "Good coin to short".
+            current_direction = "short" 
+            logger.info(f"Regime BEAR: Forcing SHORT-ONLY mode.")
+            
+        elif regime == MarketRegime.BULL:
+            # In Bull market: ONLY allowed to LONG
+            # (Prevent shorting strong trends)
+            current_direction = "long"
+            logger.info(f"Regime BULL: Forcing LONG-ONLY mode.")
+            
+        # If SIDEWAYS or UNKNOWN, stick to orig_direction (usually long-short)
+
+        # 2. Update Entry Prices for new/existing positions
         self._update_entry_info(current)
 
-        # 2. Check for SL/TP hits
-        # If any position hits SL/TP, we want to close it (set weight to 0)
-        # and prevent re-entry in the same bar.
+        # 3. Check for SL/TP hits (Risk Management)
         excl_instruments = self._check_risk_hits(current, trade_start_time, trade_end_time)
 
-        # 3. Filter by signal threshold (Absolute value)
-        # If score is below threshold, it's considered noise and ignored
-        if self.signal_threshold > 0:
-            score = score[score.abs() >= self.signal_threshold]
+        # 4. Filter Excluded Instruments & Normalize Score (Z-Score)
+        # Filter out stopped-out instruments first
+        if excl_instruments:
+            score = score[~score.index.isin(excl_instruments)]
         
         if score.empty:
             return {}
 
-        # 4. Rank scores
-        score = score.sort_values(ascending=False)
+        # Z-Score Normalization (Cross-sectional)
+        # This ensures the distribution is centered (mean=0), enabling effective Long-Short
+        # and ensuring there represent 'relative' opportunities.
+        if len(score) > 1:
+            score_std = score.std()
+            if score_std > 1e-9: # Avoid division by zero
+                score = (score - score.mean()) / score_std
+            else:
+                 # If std is 0 (all scores identical), we can't distinguish. 
+                 # Subtract mean (result 0)
+                 score = score - score.mean()
         
+        # 5. Filter by Threshold (on Normalized Score)
+        # If threshold > 0, we require Z-score > threshold (strong signal)
+        if self.signal_threshold > 0:
+            score = score[score.abs() >= self.signal_threshold]
+            
+        if score.empty:
+            return {}
+
+        # 6. Generate Weights
+        score = score.sort_values(ascending=False) # Descending for Longs
         target_weights = {}
         
-        # 4. Assign weights based on direction
-        if self.direction == "long":
-            topk_idx = [i for i in score.head(self.topk * 2).index if i not in excl_instruments][:self.topk]
-            if topk_idx:
-                unit_weight = 1.0 / len(topk_idx)
-                for inst in topk_idx:
-                    target_weights[inst] = unit_weight
-                
-        elif self.direction == "short":
-            bottomk_idx = [i for i in score.tail(self.topk * 2).index if i not in excl_instruments][:self.topk]
-            if bottomk_idx:
-                unit_weight = -1.0 / len(bottomk_idx)
-                for inst in bottomk_idx:
-                    target_weights[inst] = unit_weight
-                
-        elif self.direction == "long-short":
-            # 1. Filter out excluded instruments
-            valid_scores = score[~score.index.isin(excl_instruments)]
+        # LOGIC MODIFICATION: Use 'current_direction' instead of self.direction
+        
+        if current_direction == "long":
+            # Long Mode: Prefer positive Z-scores
+            pos_score = score[score > 0]
+            if pos_score.empty:
+                 logger.info("Regime BULL/LONG but no positive scores found. Standing aside.")
+                 return {}
+            topk_idx = pos_score.head(self.topk).index
             
-            # 2. Sort by Absolute Value (Confidence)
-            # This identifies the instruments the model is MOST SURE about, regardless of direction
-            abs_score = valid_scores.abs().sort_values(ascending=False)
+        elif current_direction == "short":
+            # Short Mode: Prefer negative Z-scores
+            neg_score = score[score < 0]
+            if neg_score.empty:
+                logger.info("Regime BEAR/SHORT but no negative scores found. Standing aside.")
+                return {}
+            # Select most negative
+            topk_idx = neg_score.nsmallest(self.topk).index
+            
+        elif current_direction == "long-short":
+            # Standard Long-Short (Direction = Sign(Score), Opportunity = Abs(Score))
+            abs_score = score.abs().sort_values(ascending=False)
             topk_idx = abs_score.head(self.topk).index
+
+        # Generate weights with leverage
+        if len(topk_idx) > 0:
+            # Global leverage default (default to 1.0 if not found)
+            global_leverage = self.kwargs.get('leverage', 1.0)
             
-            if len(topk_idx) > 0:
-                # Each selected instrument gets 1/topk share of the total exposure
-                unit_weight = 1.0 / self.topk
-                for inst in topk_idx:
-                    # Direction is determined by the sign of the original prediction
-                    side = 1 if valid_scores[inst] >= 0 else -1
-                    target_weights[inst] = side * unit_weight
+            for inst in topk_idx:
+                # Resolve leverage for this asset
+                asset_lev = self._get_param(inst, 'leverage', global_leverage)
+                
+                # Determine Side
+                if current_direction == "long-short":
+                    side = 1 if score[inst] >= 0 else -1
+                elif current_direction == "short":
+                    side = -1 
+                else: 
+                    side = 1
+                
+                # Weight Calculation
+                # Weight = (1 / K) * Leverage * Side
+                target_weights[inst] = (1.0 / self.topk) * asset_lev * side
         
         return target_weights
 
@@ -152,14 +286,18 @@ class CryptoLongShortStrategy(WeightStrategyBase):
 
             profit_pct = (curr_price / entry_price - 1.0) * side
             
+            # Resolve dynamic params
+            sl_threshold = self._get_param(inst, 'stop_loss', self.stop_loss)
+            tp_threshold = self._get_param(inst, 'take_profit', self.take_profit)
+
             # Check SL
-            if self.stop_loss is not None and profit_pct <= self.stop_loss:
-                logger.info(f"STOP LOSS hit for {inst}: profit={profit_pct:.2%}, entry={entry_price}, curr={curr_price}")
+            if sl_threshold is not None and profit_pct <= sl_threshold:
+                logger.info(f"STOP LOSS hit for {inst}: profit={profit_pct:.2%}, entry={entry_price}, curr={curr_price}, threshold={sl_threshold}")
                 excl.append(inst)
             
             # Check TP
-            elif self.take_profit is not None and profit_pct >= self.take_profit:
-                logger.info(f"TAKE PROFIT hit for {inst}: profit={profit_pct:.2%}, entry={entry_price}, curr={curr_price}")
+            elif tp_threshold is not None and profit_pct >= tp_threshold:
+                logger.info(f"TAKE PROFIT hit for {inst}: profit={profit_pct:.2%}, entry={entry_price}, curr={curr_price}, threshold={tp_threshold}")
                 excl.append(inst)
                 
         return excl

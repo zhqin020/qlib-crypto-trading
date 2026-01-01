@@ -52,6 +52,7 @@ async def main():
     )
     parser.add_argument("--model", default=default_model, choices=["lightgbm", "xgboost", "lstm", "transformer", "alstm", "gru"], help="Model architecture type")
     parser.add_argument("--config", default=None, help="Path to custom configuration JSON file")
+    parser.add_argument("--embedding", action="store_true", help="Enable instrument embedding (append HashInstrumentProcessor)")
     
     # Date segments
     parser.add_argument("--train-start", default="2023-05-10", help="Training period start date")
@@ -69,6 +70,8 @@ async def main():
     config = load_config(Path(args.config) if args.config else None)
     
     print(f"Training sample model with {model_type}...")
+    if args.embedding:
+        print("  -> Instrument Embedding Enabled")
     print()
 
     data_cfg = config.get("data", {})
@@ -84,7 +87,8 @@ async def main():
     print(f"Creating feature set for {dataset_ref}...")
     feature_set = await create_feature_set(
         dataset_ref=dataset_ref,
-        handler=training_cfg.get("feature_handler", "alpha158")
+        handler=training_cfg.get("feature_handler", "alpha158"),
+        instrument_embedding=args.embedding
     )
     print(f"Feature set created: {feature_set['name']}")
     print()
@@ -103,6 +107,22 @@ async def main():
             
     # Ensure device is set
     params["device"] = args.device
+
+    # Update params for embedding
+    if args.embedding:
+        if "d_feat" in params:
+            params["d_feat"] = int(params["d_feat"]) + 1
+        params["use_embedding"] = True
+        # For LightGBM/XGBoost - categorical features
+        # The ID is the last feature (index 158 if 0-based and orig size is 158)
+        # But d_feat is size. so last index is d_feat - 1 (after increment)
+        if model_type in ["lightgbm", "xgboost"]:
+             # Assuming standard 158 features, the new one is at index 158.
+             # We should probably get d_feat or assume 158.
+             # LightGBM expects `categorical_feature`
+             # We can handle this logic in trainer.py or here.
+             # Let's just set the flag here.
+             pass
 
     # Train model
     print(f"Training {model_type} model...")

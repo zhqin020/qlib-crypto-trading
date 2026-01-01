@@ -902,8 +902,48 @@ def get_model_config(
 
     config = configs.get(handler.lower(), configs["lightgbm"])
 
+    # Feature: Instrument Embedding Support
+    if params_copy.get("use_embedding", False):
+        if handler.lower() == "alstm":
+            logger.info("Switching to ALSTMWithEmbedding model")
+            config["class"] = "ALSTMWithEmbedding"
+            config["module_path"] = "models.alstm_embedding"
+            # Add embedding params if not present
+            if "num_embeddings" not in config["kwargs"]:
+                config["kwargs"]["num_embeddings"] = 100
+            if "embedding_dim" not in config["kwargs"]:
+                config["kwargs"]["embedding_dim"] = 16
+        elif handler.lower() in ["lightgbm", "xgboost"]:
+            # For Tree models, we use categorical feature support
+            logger.info(f"Enabling Categorical Feature for {handler}")
+            # The ID is the last feature. Qlib's data usually is 0-indexed.
+            # If d_feat is N, features are 0..N-1. The ID is at N-1.
+            # We assume d_feat is already incremented in train_sample_model.py
+            # But params_copy has 'd_feat'? 
+            # Usually tree models don't need 'd_feat' param explicitly, they just train on X.
+            # But we need to tell them which column is categorical.
+            # LightGBM kwargs: categorical_feature=[index]
+            
+            # Since we appended it at the end, and we don't know the exact index here easily 
+            # (unless we trust d_feat passed in params).
+            # Let's trust user passed d_feat or rely on 'auto' logic if implemented.
+            # Assuming 158 original features, index is 158.
+            # But robust way: pass "name:instrument_id" if using pandas?
+            # Qlib DatasetH returns numpy or dataframe depending on config.
+            # Usually LightGBM in Qlib receives pandas or numpy.
+            
+            # If we simply pass 'categorical_feature' to LightGBM kwargs, it handles it.
+            # We assume the ID is the LAST column.
+            # We'll calculate index based on param 'd_feat' if available, else standard 158.
+            feat_idx = int(params_copy.get("d_feat", 159)) - 1
+            config["kwargs"]["categorical_feature"] = [feat_idx] # LightGBM specific
+            
+            if handler.lower() == "xgboost":
+                 config["kwargs"]["enable_categorical"] = True
+
+
     # Apply device configuration to PyTorch models
-    if device_config and handler.lower() in ["lstm", "transformer", "gru"]:
+    if device_config and handler.lower() in ["lstm", "transformer", "gru", "alstm", "alstm_embedding"]:
         # Merge device config, allowing user params to override if specified
         if "GPU" not in params_copy:
             config["kwargs"].update(device_config)

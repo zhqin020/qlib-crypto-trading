@@ -3,6 +3,7 @@
 Hyperparameter Tuning Script for Qlib Crypto Platform (Optuna Edition)
 Uses Bayesian Optimization to find optimal parameters.
 Supports parallel execution, PostgreSQL persistence, and resource optimization.
+Includes tuning for Model, Strategy, and Risk Control (SL/TP) parameters.
 """
 
 import json
@@ -83,7 +84,6 @@ def run_command(cmd, env_vars: Optional[Dict[str, str]] = None):
     """Run a shell command and return the result."""
     start_time = time.time()
     
-    # Merge current environment with custom variables
     current_env = os.environ.copy()
     if env_vars:
         current_env.update(env_vars)
@@ -92,7 +92,7 @@ def run_command(cmd, env_vars: Optional[Dict[str, str]] = None):
         cmd, 
         shell=True, 
         stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT, # Merge stderr into stdout
+        stderr=subprocess.STDOUT,
         text=True,
         env=current_env
     )
@@ -110,34 +110,28 @@ def parse_metrics(output):
         "win_rate": 0.0
     }
     
-    # Sharpe Ratio
     sharpe_match = re.search(r"Sharpe Ratio:\s*([-\d.]+)", output)
     if not sharpe_match:
         sharpe_match = re.search(r"Sharpe=([-\d.]+)", output)
     if sharpe_match:
         metrics["sharpe"] = float(sharpe_match.group(1))
         
-    # Annual Return
     return_match = re.search(r"Annualized Return:\s*([-\d.]+)%", output)
     if return_match:
         metrics["annual_return"] = float(return_match.group(1)) / 100.0
         
-    # Max Drawdown
     mdd_match = re.search(r"Max Drawdown:\s*([-\d.]+)%", output)
     if mdd_match:
         metrics["max_drawdown"] = float(mdd_match.group(1)) / 100.0
 
-    # Sortino Ratio
     sortino_match = re.search(r"Sortino Ratio:\s*([-\d.]+)", output)
     if sortino_match:
         metrics["sortino"] = float(sortino_match.group(1))
 
-    # Calmar Ratio
     calmar_match = re.search(r"Calmar Ratio:\s*([-\d.]+)", output)
     if calmar_match:
         metrics["calmar"] = float(calmar_match.group(1))
 
-    # Win Rate
     win_match = re.search(r"Win Rate:\s*([-\d.]+)%", output)
     if win_match:
         metrics["win_rate"] = float(win_match.group(1)) / 100.0
@@ -146,7 +140,6 @@ def parse_metrics(output):
 
 def calculate_composite_score(metrics):
     """Calculate Weighted Performance Score (WPS)"""
-    # 1. Base Score Components
     sharpe_score = max(0, metrics["sharpe"]) * 0.40
     sortino_score = max(0, metrics["sortino"]) * 0.15
     calmar_score = max(0, metrics["calmar"]) * 0.10
@@ -154,14 +147,13 @@ def calculate_composite_score(metrics):
     
     composite = sharpe_score + sortino_score + calmar_score + win_rate_score
     
-    # 2. Risk Penalties
     mdd = metrics["max_drawdown"]
     if mdd > 0.50:
-        return -999.0 # Hard disqualify for 50% drawdown
+        return -999.0
     
     penalty = 0.0
     if mdd > 0.20:
-        penalty = (mdd - 0.20) * 2.0 # -0.2 score for every 10% past 20% MDD
+        penalty = (mdd - 0.20) * 2.0
         
     return composite - penalty
 
@@ -170,14 +162,13 @@ def objective(trial, model_type, folds, base_config):
     trial_id = trial.number
     trial_config_path = TMP_DIR / f"config_{model_type}_{trial_id}.json"
     
-    # Read tuning limits
     tuning_cfg = base_config.get("tuning", {})
     n_epochs = tuning_cfg.get("n_epochs", 20)
     early_stop = tuning_cfg.get("early_stop", 10)
     threads_per_job = str(tuning_cfg.get("max_threads_per_job", 2))
     hs_options = tuning_cfg.get("hidden_size_options", [32, 64])
     
-    # 1. Define parameters based on model type
+    # 1. Model Parameters
     params = {}
     if model_type == "lightgbm":
         params["learning_rate"] = trial.suggest_float("learning_rate", 0.005, 0.1, log=True)
@@ -199,13 +190,20 @@ def objective(trial, model_type, folds, base_config):
         if model_type == "alstm":
             params["rnn_type"] = trial.suggest_categorical("rnn_type", ["GRU", "LSTM"])
     
-    # 1.1 Strategy parameters tuning
+    # 2. Strategy Parameters
     strat_params = {}
     strat_params["topk"] = trial.suggest_int("topk", 3, 5)
     strat_params["leverage"] = trial.suggest_int("leverage", 1, 3)
     strat_params["threshold"] = trial.suggest_float("threshold", 0.0, 0.5)
     
-    # 2. Update config for this trial
+    # 3. Risk Control Parameters (SL/TP)
+    risk_params = {}
+    # Stop Loss: Search from 0.05 (5%) to 0.25 (25%)
+    risk_params["stop_loss"] = -trial.suggest_float("stop_loss_abs", 0.05, 0.25)
+    # Take Profit: Search from 0.10 (10%) to 0.50 (50%)
+    risk_params["take_profit"] = trial.suggest_float("take_profit_abs", 0.10, 0.50)
+    
+    # Update config for this trial
     trial_config = base_config.copy()
     if "training" not in trial_config: trial_config["training"] = {}
     if "models" not in trial_config["training"]: trial_config["training"]["models"] = {}
@@ -215,51 +213,54 @@ def objective(trial, model_type, folds, base_config):
     trial_config["training"]["model_type"] = model_type
     
     if "backtest" not in trial_config: trial_config["backtest"] = {}
-    if "trading" not in trial_config["trading"]: trial_config["trading"] = {}
+    if "trading" not in trial_config: trial_config["trading"] = {}
     trial_config["backtest"]["topk"] = strat_params["topk"]
     trial_config["trading"]["leverage"] = strat_params["leverage"]
     trial_config["trading"]["signal_threshold"] = strat_params["threshold"]
+    trial_config["trading"]["stop_loss"] = risk_params["stop_loss"]
+    trial_config["trading"]["take_profit"] = risk_params["take_profit"]
     
     save_config(trial_config, trial_config_path)
     
-    # Environment variables for thread control
     env_vars = {
         "OMP_NUM_THREADS": threads_per_job,
         "MKL_NUM_THREADS": threads_per_job,
-        "OPENBLAS_NUM_THREADS": threads_per_job,
-        "VECLIB_MAXIMUM_THREADS": threads_per_job,
-        "NUMEXPR_NUM_THREADS": threads_per_job
     }
     
-    # 3. Iterate Folds
     all_metrics = []
     composite_scores = []
     
-    logger.info(f"[Trial {trial_id}] Started with Model Params: {params} and Strat Params: {strat_params}")
-    
     try:
+        # Combine params for logging
+        all_params = {**params, **strat_params, **risk_params}
+        print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Trial {trial_id} START | Params: {json.dumps(all_params)}", flush=True)
+
         for i, fold in enumerate(folds):
-            logger.info(f"[Trial {trial_id}] Fold {i+1}/{len(folds)} ({fold['test'][0]} to {fold['test'][1]})")
-            
+            # Check for embedding
+            embedding_flag = ""
+            if base_config.get("training", {}).get("use_embedding", False):
+                embedding_flag = "--embedding"
+
             # Train
+            print(f"[{datetime.now().strftime('%H:%M:%S')}]   > Fold {i+1}/{len(folds)} | ⏳ Training... ", end="", flush=True)
             train_cmd = (f"{sys.executable} scripts/train_sample_model.py --config {trial_config_path} "
-                         f"--model {model_type} "
+                         f"--model {model_type} {embedding_flag} "
                          f"--train-start {fold['train'][0]} --train-end {fold['train'][1]} "
                          f"--valid-start {fold['valid'][0]} --valid-end {fold['valid'][1]}")
             train_res, _ = run_command(train_cmd, env_vars=env_vars)
             if train_res.returncode != 0:
-                logger.error(f"[Trial {trial_id}] Train FAIL on Fold {i+1}")
+                print(f"❌ Failed.\nSample Output: {train_res.stdout[:500]}", flush=True)
                 composite_scores.append(-999.0)
                 continue
+            print("✅", flush=True)
                 
             # Backtest
+            print(f"[{datetime.now().strftime('%H:%M:%S')}]   > Fold {i+1}/{len(folds)} | 📈 Backtesting... ", end="", flush=True)
             bt_cmd = (f"{sys.executable} scripts/run_backtest.py --config {trial_config_path} "
-                      f"--start {fold['test'][0]} --end {fold['test'][1]} "
-                      f"--topk {strat_params['topk']} --leverage {strat_params['leverage']} "
-                      f"--threshold {strat_params['threshold']}")
+                      f"--start {fold['test'][0]} --end {fold['test'][1]}")
             bt_res, _ = run_command(bt_cmd, env_vars=env_vars)
             if bt_res.returncode != 0:
-                logger.error(f"[Trial {trial_id}] BT FAIL on Fold {i+1}")
+                print(f"❌ Failed.\nSample Output: {bt_res.stdout[:500]}", flush=True)
                 composite_scores.append(-999.0)
                 continue
                 
@@ -267,16 +268,13 @@ def objective(trial, model_type, folds, base_config):
             score = calculate_composite_score(metrics)
             all_metrics.append(metrics)
             composite_scores.append(score)
-            logger.info(f"[Trial {trial_id}] Fold {i+1} Result -> Sharpe: {metrics['sharpe']:.2f}, Score: {score:.2f}")
+            print(f"✅ Score: {score:.3f} (Sharpe: {metrics['sharpe']:.2f})", flush=True)
 
-        # Aggregate results
         if not composite_scores:
             return -999.0
             
         avg_score = sum(composite_scores) / len(composite_scores)
         avg_sharpe = sum(m["sharpe"] for m in all_metrics) / len(all_metrics) if all_metrics else -999.0
-        
-        logger.info(f"[Trial {trial_id}] Finished -> Avg Sharpe: {avg_sharpe:.3f}, Final WPS: {avg_score:.4f}")
         
         trial.set_user_attr("sharpe", avg_sharpe)
         trial.set_user_attr("max_drawdown", sum(m["max_drawdown"] for m in all_metrics) / len(all_metrics) if all_metrics else 1.0)
@@ -287,35 +285,28 @@ def objective(trial, model_type, folds, base_config):
             trial_config_path.unlink()
 
 def get_storage_url(config: Dict[str, Any]) -> Optional[str]:
-    """Build PostgreSQL storage URL from config."""
     db_cfg = config.get("database", {})
     if not db_cfg.get("use_db", False):
         return None
-    
     user = db_cfg.get("user", "crypto_user")
     password = db_cfg.get("password", "crypto")
     host = db_cfg.get("host", "localhost")
     port = db_cfg.get("port", 5432)
     dbname = db_cfg.get("dbname", "qlib_crypto")
-    
     return f"postgresql://{user}:{password}@{host}:{port}/{dbname}"
 
 def main():
-    parser = argparse.ArgumentParser(description="Hyperparameter Tuning with Optuna (Parallel & Persistent)")
+    parser = argparse.ArgumentParser(description="Hyperparameter Tuning with Optuna (Model + Strat + Risk)")
     parser.add_argument("--trials", type=int, default=20, help="Number of trials to run")
-    parser.add_argument("--model", type=str, default=None, help="Model type to tune (lightgbm, xgboost, alstm, lstm)")
-    parser.add_argument("--folds", type=int, default=3, help="Number of folds for Walk-Forward Validation")
-    parser.add_argument("--n_jobs", type=int, default=1, help="Number of parallel trials (workers)")
-    parser.add_argument("--study_name", type=str, default=None, help="Name of the Optuna study")
+    parser.add_argument("--model", type=str, default=None, help="Model type to tune")
+    parser.add_argument("--folds", type=int, default=3, help="Number of folds for WFV")
+    parser.add_argument("--n_jobs", type=int, default=1, help="Parallel workers")
+    parser.add_argument("--study_name", type=str, default=None, help="Study name")
     args = parser.parse_args()
 
     setup_dirs()
+    if not CONFIG_PATH.exists(): return
 
-    if not CONFIG_PATH.exists():
-        logger.error(f"{CONFIG_PATH} not found")
-        return
-
-    # Backup configuration
     shutil.copy(CONFIG_PATH, BACKUP_PATH)
     logger.info(f"Backed up config to {BACKUP_PATH}")
 
@@ -323,99 +314,59 @@ def main():
         base_config = load_config()
         model_type = args.model or base_config.get("training", {}).get("model_type", "lightgbm")
         
-        # Get Rolling Window Config
-        rw_cfg = base_config.get("training", {}).get("rolling_window", {})
-        n_folds = args.folds if args.folds != 3 else rw_cfg.get("n_folds", 3)
-        fold_ratio = rw_cfg.get("fold_ratio", [6, 1, 2])
-        step_months = rw_cfg.get("step_months", 3)
-
-        # Get Data/Tuning range
-        tr_start = base_config.get("training", {}).get("start_time", "2023-01-01")
-        dt_end = base_config.get("data", {}).get("end_time")
-        if not dt_end: # Default to now
-            dt_end = (datetime.now(timezone.utc) - timedelta(days=2)).strftime("%Y-%m-%d")
-
         folds = generate_wfv_folds(
-            start_date=tr_start,
-            end_date=dt_end,
-            n_folds=n_folds,
-            ratio=fold_ratio,
-            step_months=step_months
+            start_date=base_config.get("training", {}).get("start_time", "2023-01-01"),
+            end_date=(datetime.now(timezone.utc) - timedelta(days=2)).strftime("%Y-%m-%d"),
+            n_folds=args.folds,
+            ratio=base_config.get("training", {}).get("rolling_window", {}).get("fold_ratio", [6,1,2]),
+            step_months=base_config.get("training", {}).get("rolling_window", {}).get("step_months", 3)
         )
         
         storage_url = get_storage_url(base_config)
         study_name = args.study_name or f"crypto_tuning_{model_type}_{datetime.now().strftime('%Y%m%d_%H%M')}"
         
-        logger.info(f"Starting Optuna Optimization with {len(folds)} Folds")
-        logger.info(f"Model: {model_type.upper()}, Trials: {args.trials}, Parallel Workers: {args.n_jobs}")
-        if storage_url:
-            logger.info(f"Using persistence: {storage_url} (Study: {study_name})")
+        logger.info(f"Starting Tuning: {model_type.upper()}, {args.trials} trials, {args.n_jobs} jobs.")
         
-        study = optuna.create_study(
-            study_name=study_name,
-            storage=storage_url,
-            direction="maximize",
-            load_if_exists=True
-        )
-        
-        study.optimize(
-            lambda trial: objective(trial, model_type, folds, base_config), 
-            n_trials=args.trials, 
-            n_jobs=args.n_jobs
-        )
-        
-        # Save results
-        df = study.trials_dataframe()
-        df.to_csv(HISTORY_PATH, index=False)
-        logger.info(f"Tuning history saved to {HISTORY_PATH}")
+        study = optuna.create_study(study_name=study_name, storage=storage_url, direction="maximize", load_if_exists=True)
+        study.optimize(lambda trial: objective(trial, model_type, folds, base_config), n_trials=args.trials, n_jobs=args.n_jobs)
         
         # Report Best
-        print("\n" + "="*60)
-        print("OPTIMIZATION COMPLETE (WPS Based)")
+        print("\n" + "="*80)
+        print(f"🥇 OPTIMIZATION COMPLETE - Study: {study_name}")
         print(f"Best Composite Score (WPS): {study.best_value:.4f}")
         
-        best_trial = study.best_trial
-        print(f"Best Sharpe Ratio: {best_trial.user_attrs.get('sharpe', 0):.3f}")
-        print(f"Best Max Drawdown: {best_trial.user_attrs.get('max_drawdown', 0)*100:.2f}%")
+        # Sync and Save
+        best_config = load_config(BACKUP_PATH)
+        m_keys = ["learning_rate", "num_leaves", "lambda_l2", "max_depth", "n_estimators", "lr", "dropout", "hidden_size", "rnn_type"]
+        best_params = study.best_params
         
-        print("Best Parameters:")
-        for k, v in study.best_params.items():
-            print(f"  - {k}: {v}")
-            
-        # Update and save best config
-        best_config = load_config(BACKUP_PATH) # Re-load from backup
-        if "training" not in best_config: best_config["training"] = {}
-        if "models" not in best_config["training"]: best_config["training"]["models"] = {}
-        if model_type not in best_config["training"]["models"]: best_config["training"]["models"][model_type] = {}
+        # Process Params
+        model_updates = {k: v for k, v in best_params.items() if k in m_keys}
+        best_config["training"]["models"][model_type].update(model_updates)
+        best_config["trading"]["leverage"] = int(best_params.get("leverage", 1))
+        best_config["trading"]["signal_threshold"] = best_params.get("threshold", 0.0)
+        best_config["trading"]["stop_loss"] = -best_params.get("stop_loss_abs", 0.1)
+        best_config["trading"]["take_profit"] = best_params.get("take_profit_abs", 0.2)
+        best_config["backtest"]["topk"] = int(best_params.get("topk", 3))
         
-        model_keys = ["learning_rate", "num_leaves", "lambda_l2", "max_depth", "n_estimators", "lr", "dropout", "hidden_size", "rnn_type"]
-        best_model_params = {k: v for k, v in study.best_params.items() if k in model_keys}
-        
-        best_config["training"]["models"][model_type].update(best_model_params)
-        best_config["training"]["model_type"] = model_type
-        
-        if "backtest" not in best_config: best_config["backtest"] = {}
-        if "trading" not in best_config: best_config["trading"] = {}
-        if "topk" in study.best_params:
-            best_config["backtest"]["topk"] = int(study.best_params["topk"])
-        if "leverage" in study.best_params:
-            best_config["trading"]["leverage"] = int(study.best_params["leverage"])
-        if "threshold" in study.best_params:
-            best_config["trading"]["signal_threshold"] = study.best_params["threshold"]
-            
         save_config(best_config, BEST_CONFIG_PATH)
-        print(f"Best configuration saved to: {BEST_CONFIG_PATH}")
-        print("="*60 + "\n")
         
-    except KeyboardInterrupt:
-        print("\nTuning interrupted by user.")
+        # Print Detailed Summary
+        print("\n--- Optimized Configuration ---")
+        print(f"Model ID: (To be generated upon full training)")
+        print(f"ALSTM Params: {model_updates}")
+        print(f"Strategy: topk={best_config['backtest']['topk']}, leverage={best_config['trading']['leverage']}, threshold={best_config['trading']['signal_threshold']:.4f}")
+        print(f"Risk Control: SL={best_config['trading']['stop_loss']:.1%}, TP={best_config['trading']['take_profit']:.1%}")
+        
+        print("\n--- Validation Command ---")
+        print(f"1. Train Full: python scripts/train_sample_model.py --config {BEST_CONFIG_PATH} --model {model_type}")
+        print(f"2. Backtest:    python scripts/run_backtest.py <MODEL_ID> --config {BEST_CONFIG_PATH}")
+        print("="*80 + "\n")
+        
     except Exception as e:
-        logger.error(f"An error occurred: {e}", exc_info=True)
+        logger.error(f"Error: {e}", exc_info=True)
     finally:
-        # Restore original configuration
-        if BACKUP_PATH.exists():
-            shutil.copy(BACKUP_PATH, CONFIG_PATH)
-            logger.info(f"Restored original configuration from {BACKUP_PATH}")
+        if BACKUP_PATH.exists(): shutil.copy(BACKUP_PATH, CONFIG_PATH)
 
 if __name__ == "__main__":
     main()

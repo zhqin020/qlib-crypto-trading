@@ -375,6 +375,8 @@ async def run_backtest(
                             "stop_loss": stop_loss,
                             "signal_threshold": signal_threshold,
                             "risk_degree": float(leverage),
+                            # Provide resolved data frequency so strategies can query with the correct freq
+                            "data_freq": qlib_handler_freq,
                         },
                     }
                 else:

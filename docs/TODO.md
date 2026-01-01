@@ -11,6 +11,7 @@
 - [x] **Direction Support**: Integrated `long`, `short`, and `long-short` directions.
 - [x] **Risk Control**: Implemented per-instrument Stop-Loss and Take-Profit.
 - [x] **Leverage Support**: Integrated leverage into the backtesting engine and executor.
+- [x] **Score Enhancement**: Implemented Z-Score Normalization and Short Fallback Logic for robust Long-Short selection.
 
 ## 3. Configuration & Diagnostics
 - [x] **Centralized Config**: Parameters (data, training, backtest, trading) in `config/trading_params.json`.
@@ -21,6 +22,12 @@
 
 # 🚀 Next Steps (Roadmap)
 - [x] **Rolling Walk-Forward Validation**: Validate parameters across multiple time windows to prevent overfitting.
+- [x] **Real-time Order Execution Planning**: Defined the [blueprint](docs/REAL_TIME_EXECUTION_BLUEPRINT.md) for CCXT integration and shadow trading.
 - [ ] **Transaction Cost Modeling**: More precise fee estimation for high-frequency strategies.
-- [ ] **Real-time Order Execution**: Connect the strategy engine to live exchange APIs.
 - [ ] **Portfolio Optimization**: Implement Markowitz or Black-Litterman for dynamic asset allocation.
+- [ ] **Investigation: 2024H2 Model Decay**: Analyze why Alpha158 factors lose predictive power in the late 2024 dominant-BTC market regime.
+- [ ] **Asset-Specific Modeling (Solution B)**: Develop `ALSTMWithEmbedding` model.
+    - [ ] **Data Engineering**: Inject integer mapped `instrument_id` as a static feature in the dataset.
+    - [ ] **Model Arch**: Learn a learnable vector (Embedding) for each asset and fuse it with LSTM hidden states.
+    - [ ] **Goal**: Allow a single Global Model to learn specific "personalities" (e.g., BTC=Trend, PEPE=Revert).
+- [ ] **Market Regime Detection**: Implement HMM (Hidden Markov Model) or Rule-based logic to detect "Choppy" vs "Trending" markets and adjust strategy.
