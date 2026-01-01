@@ -23,6 +23,10 @@
 # 🚀 Next Steps (Roadmap)
 - [x] **Rolling Walk-Forward Validation**: Validate parameters across multiple time windows to prevent overfitting.
 - [x] **Real-time Order Execution Planning**: Defined the [blueprint](docs/REAL_TIME_EXECUTION_BLUEPRINT.md) for CCXT integration and shadow trading.
+- [ ] **Live Execution Implementation**:
+    - [x] **Exchange Connectivity**: Connect to OKX Demo via CCXT (`src/serving/exchange.py`).
+    - [ ] **Order Executor**: Implement OMS logic to sync weights to orders.
+    - [ ] **Data Sync**: Real-time data fetching pipeline.
 - [ ] **Transaction Cost Modeling**: More precise fee estimation for high-frequency strategies.
 - [ ] **Portfolio Optimization**: Implement Markowitz or Black-Litterman for dynamic asset allocation.
 - [ ] **Investigation: 2024H2 Model Decay**: Analyze why Alpha158 factors lose predictive power in the late 2024 dominant-BTC market regime.
