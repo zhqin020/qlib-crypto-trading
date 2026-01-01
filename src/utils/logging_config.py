@@ -63,7 +63,7 @@ def rotate_numbered_logs(directory: Path, base_name: str, extension: str, max_in
             pass
     return new_log
 
-def setup_logging() -> logging.Logger:
+def setup_logging(skip_rotation: bool = False) -> logging.Logger:
     """Setup standard logging based on trading_params.json with manual rotation."""
     log_cfg = load_logging_config()
     
@@ -100,11 +100,15 @@ def setup_logging() -> logging.Logger:
     
     # Extension and rotation
     extension = ".log"
-    # Perform manual rotation at startup
-    log_path = rotate_numbered_logs(log_dir, log_base, extension, max_index)
+    # Perform manual rotation at startup if not skipped
+    if not skip_rotation:
+        log_path = rotate_numbered_logs(log_dir, log_base, extension, max_index)
+    else:
+        log_path = log_dir / f"{log_base}-1{extension}"
     
-    # Use mode='w' to ensure each run starts fresh on the new xxx-1.log
-    file_handler = logging.FileHandler(log_path, mode='w', encoding="utf-8")
+    # Use mode='a' if skipping rotation to append to existing log, 'w' otherwise
+    mode = 'a' if skip_rotation else 'w'
+    file_handler = logging.FileHandler(log_path, mode=mode, encoding="utf-8")
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
     

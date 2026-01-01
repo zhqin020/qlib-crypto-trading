@@ -13,25 +13,25 @@ Integrate Local Order Management System (OMS) with OKX real-time market data and
     - Supported net-position model with signed amounts (Positive=Long, Negative=Short).
     - Future-style accounting (PnL affects Balance, Equity = Balance + Unrealized PnL).
     - Leverage-aware rebalancing logic.
-    - Simulated slippage (0.1%) and fees (0.05%).
-- **API Enhancement**: Added endpoints to `src/ui/api_enhanced.py` for account summary, positions, and order history.
-- **Web UI Dashboard**: Created "OMS Management" tab in the frontend with real-time refresh capability.
-- **Live Cycle Prototype**: Created `src/serving/live_loop.py` demonstrating a full cycle: Sync Prices -> Get Strategy Weights -> OMS Rebalance.
-- **Strategy logic**: Added Z-Score normalization and Market Regime filtering to `CryptoLongShortStrategy`.
+- **Real Model Integration**: Successfully replaced mock predictions with real Qlib model inference.
+    - Implemented `QlibPredictor` in `src/serving/predictor.py`.
+    - Integrated `ALSTMWithEmbedding` model with real-time feature extraction.
+    - Handled rolling 200h lookback for Alpha158 features.
+    - Implemented symbol mapping between Exchange (BTC/USDT) and Qlib (BTC).
+- **Live Loop Automation**: Automated the loop via background tasks in FastAPI.
+- **Robustness**: Fixed Qlib initialization interfering with logging and resolved database connectivity issues.
 
 ## 🛠 Technical Details
-- **Database**: PostgreSQL with SQLAlchemy models.
-- **Exchange**: CCXT for real-time ticker data.
-- **Web Framework**: FastAPI for backend, Vue.js for frontend.
+- **Predictor**: Custom `QlibPredictor` wrapper over pickled ALSTM models.
+- **Data Flow**: Exchange (CCXT) -> Feature Calculation (Qlib) -> Inference (PyTorch) -> Signal (Strategy) -> Execution (OMS).
 
-## 🚀 Next Steps
-- Automate the live loop with `APScheduler`.
-- Implement full predictor integration (feeding real-time bin data to models).
-- Add support for Stop-Loss/Take-Profit orders in the OMS (currently monitored by strategy).
+## 🚀 Future Enhancements
+- Fine-tune `signal_threshold` and `leverage` based on live performance.
+- Add support for Limit orders and OCO orders in the OMS.
 
 ## 📊 Verification
-Ran `src/serving/live_loop.py` successfully:
-- Balanced synced.
-- Strategy generated weights.
-- OMS executed BUY/SELL orders.
-- Web UI reflected updated state.
+- Running live trading cycle successfully:
+    - Real-time features extracted for 11+ symbols.
+    - Model generates dynamic scores every cycle.
+    - Portfolio rebalanced according to model signals.
+    - Logs capture detailed execution telemetry.

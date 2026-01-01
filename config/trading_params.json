@@ -1,8 +1,8 @@
 {
     "logging": {
-        "level": "INFO",
-        "log_file": "glib-crypto.log",
-        "log_base": "glib-crypto",
+        "level": "DEBUG",
+        "log_file": "qlib-crypto.log",
+        "log_base": "qlib-crypto",
         "max_index": 9
     },
     "data": {
@@ -141,5 +141,10 @@
     },
     "system": {
         "remote_monitoring": false
+    },
+    "serving": {
+        "model_path": "models/trained/alstm_20251231_172322_1e169289.pkl",
+        "feature_set": "alpha158_crypto_1h_future_emb",
+        "dataset_name": "crypto_1h_future"
     }
 }

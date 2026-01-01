@@ -3,7 +3,7 @@ import ccxt
 import os
 import json
 import logging
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, List
 from dotenv import load_dotenv
 
 # Load .env file
@@ -16,15 +16,14 @@ class ExchangeConnector:
     Manages connection to Crypto Exchanges via CCXT.
     Supports Real-time data fetching and Order Execution.
     """
-    
-    def __init__(self, config: Dict[str, Any]):
-        self.config = config
-        self.exchange_name = config.get("name", "okx")
-        self.api_key = config.get("api_key")
-        self.secret = config.get("secret")
-        self.password = config.get("password") # OKX/Kucoin uses password/passphrase
-        self.sandbox = config.get("sandbox", False)
-        self.options = config.get("options", {})
+    def __init__(self, config: Optional[Dict[str, Any]] = None):
+        self.config = config or {}
+        self.exchange_name = self.config.get("name", "okx")
+        self.api_key = self.config.get("api_key")
+        self.secret = self.config.get("secret")
+        self.password = self.config.get("password") # OKX/Kucoin uses password/passphrase
+        self.sandbox = self.config.get("sandbox", False)
+        self.options = self.config.get("options", {})
         
         self.exchange = self._initialize_exchange()
         
@@ -85,4 +84,21 @@ class ExchangeConnector:
     def fetch_ohlcv(self, symbol: str, timeframe: str = '1h', limit: int = 100):
         """Fetch OHLCV data"""
         return self.exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+
+    def get_latest_prices(self, symbols: List[str]) -> Dict[str, float]:
+        """Fetch latest prices for a list of symbols"""
+        try:
+            # Most exchanges support fetch_tickers
+            tickers = self.exchange.fetch_tickers(symbols)
+            return {s: tickers[s]['last'] for s in symbols if s in tickers}
+        except Exception as e:
+            logger.warning(f"Batch fetch_tickers failed: {e}. Falling back to individual fetch.")
+            prices = {}
+            for symbol in symbols:
+                try:
+                    ticker = self.exchange.fetch_ticker(symbol)
+                    prices[symbol] = ticker['last']
+                except Exception as e2:
+                    logger.error(f"Failed to fetch price for {symbol}: {e2}")
+            return prices
 

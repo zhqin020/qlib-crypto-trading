@@ -1,6 +1,6 @@
 
 import logging
-from typing import Dict
+from typing import Dict, Optional
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
 import os
@@ -31,12 +31,13 @@ class LocalOrderManager:
     def _get_account(self, session):
         return session.query(SimulationAccount).filter_by(name=self.account_name).first()
 
-    def sync_market_prices(self):
+    def sync_market_prices(self, current_prices: Optional[Dict[str, float]] = None):
         """
-        Fetch latest prices for all held positions to update Equity and Unrealized PnL.
+        Update Equity and Unrealized PnL based on latest market prices.
+        If current_prices is provided, use it. Otherwise fetch from exchange.
         """
-        if not self.connector:
-            logger.warning("No Exchange Connector provided. Skipping price sync.")
+        if not self.connector and not current_prices:
+            logger.warning("No Exchange Connector and no prices provided. Skipping price sync.")
             return
 
         session = self.Session()
@@ -49,11 +50,16 @@ class LocalOrderManager:
         total_pnl = 0.0
         
         for pos in positions:
-            # Fetch real-time price
+            # Get real-time price
             try:
-                # We fetch a single 1m candle or ticker
-                ticker = self.connector.exchange.fetch_ticker(pos.symbol)
-                current_price = ticker['last']
+                if current_prices and pos.symbol in current_prices:
+                    current_price = current_prices[pos.symbol]
+                elif self.connector:
+                    ticker = self.connector.exchange.fetch_ticker(pos.symbol)
+                    current_price = ticker['last']
+                else:
+                    logger.warning(f"No price for {pos.symbol}")
+                    continue
                 
                 # Update Position Stats
                 pos.current_price = current_price

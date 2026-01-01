@@ -92,7 +92,9 @@ class BackgroundTaskManager:
         
         # Initialize loop
         try:
+            logger.info("Initializing LiveTradingLoop...")
             loop = LiveTradingLoop()
+            logger.info("LiveTradingLoop initialized successfully.")
         except Exception as e:
             logger.error(f"Failed to initialize LiveTradingLoop: {e}", exc_info=True)
             return
