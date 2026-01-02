@@ -482,6 +482,11 @@ async def train_model(
                 if "kwargs" not in handler_config:
                     handler_config["kwargs"] = {}
 
+                # Support for per-symbol modeling: override instruments if provided in params
+                if params and "instruments" in params:
+                    handler_config["kwargs"]["instruments"] = params["instruments"]
+                    logger.info(f"Overriding instruments for per-symbol training: {params['instruments']}")
+
                 # Map frequency for Qlib
                 freq_val = snapshot_meta.get("frequency", "1d")
                 freq_map = {

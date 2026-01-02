@@ -44,12 +44,16 @@ class CryptoLongShortStrategy(WeightStrategyBase):
         # We should pop 'leverage' and 'instrument_config' from kwargs before calling super
         leverage = kwargs.pop('leverage', 1.0)
         inst_config = kwargs.pop('instrument_config', {})
+        ranking_mode = kwargs.pop('ranking_mode', 'signal')
+        amplitude_window = kwargs.pop('amplitude_window', 24)
         
         super().__init__(signal=signal, risk_degree=risk_degree, **kwargs)
         
         # Restore them for our use
         self.kwargs['leverage'] = leverage
         self.instrument_config = inst_config
+        self.ranking_mode = ranking_mode
+        self.amplitude_window = amplitude_window
         self.topk = topk
         self.orig_direction = direction.lower() # Store original config
         self.direction = self.orig_direction
@@ -60,6 +64,10 @@ class CryptoLongShortStrategy(WeightStrategyBase):
         self.force_regime = None # Optional override for live mode
         # Resolved data frequency (e.g. '60min'). If not provided, default to 60min.
         self.data_freq = data_freq or "60min"
+        
+        # Prediction History for Sigma calculation (Confidence)
+        self.prediction_history: Dict[str, List[float]] = {}
+        self.max_history = 100 # Lookback for sigma logic
         
         # Initialize Regime Detector
         self.detector = MarketRegimeDetector()
@@ -196,56 +204,80 @@ class CryptoLongShortStrategy(WeightStrategyBase):
         # This ensures the distribution is centered (mean=0), enabling effective Long-Short
         # and ensuring there represent 'relative' opportunities.
         if len(score) > 1:
-            score_std = score.std()
-            if score_std > 1e-9: # Avoid division by zero
-                score = (score - score.mean()) / score_std
-            else:
-                 # If std is 0 (all scores identical), we can't distinguish. 
-                 # Subtract mean (result 0)
-                 score = score - score.mean()
+            # We skip global Z-score normalization if we want the 'raw' predicted change to be the selector
+            # But we keep it as an option. For Per-Symbol modeling, it's better to NOT normalize globally 
+            # because different coins have different natural volatility scales.
+            pass
         
-        # 5. Filter by Threshold (on Normalized Score)
-        # If threshold > 0, we require Z-score > threshold (strong signal)
+        # 5. Update Prediction History & Calculate Sigma (Confidence)
+        sigmas = {}
+        for inst, val in score.items():
+            if inst not in self.prediction_history:
+                self.prediction_history[inst] = []
+            
+            # Store history
+            self.prediction_history[inst].append(val)
+            if len(self.prediction_history[inst]) > self.max_history:
+                self.prediction_history[inst].pop(0)
+            
+            # Calculate Sigma (Z-Score vs itself)
+            if len(self.prediction_history[inst]) > 5:
+                series = pd.Series(self.prediction_history[inst])
+                std = series.std()
+                mean = series.mean()
+                if std > 1e-6:
+                    sigmas[inst] = (val - mean) / std
+                else:
+                    sigmas[inst] = 0
+            else:
+                sigmas[inst] = 0
+
+        # 6. Filter by Threshold (on raw prediction if sigma not ready)
         if self.signal_threshold > 0:
             score = score[score.abs() >= self.signal_threshold]
             
         if score.empty:
             return {}
 
-        # 6. Generate Weights
-        score = score.sort_values(ascending=False) # Descending for Longs
+        # 7. Selection & Ranking
+        # Target: Price magnitude change. Use abs(score) as the primary rank.
+        ranking_score = score.abs()
+        
+        # LOGING SIGMA for observability
+        top_ranked = ranking_score.sort_values(ascending=False).head(5)
+        for inst in top_ranked.index:
+            sigma_val = sigmas.get(inst, 0)
+            # Simple probability estimate: how 'extreme' is this signal?
+            # Using an approximation of Gaussian CDF for confidence (0.5 to 1.0)
+            prob = 0.5 + 0.5 * (1 - np.exp(-0.7 * abs(sigma_val)**2)) # Heuristic CDF
+            
+            logger.info(f"Signal Track | {inst:10} | Pred: {score[inst]:.4%} | Sigma: {sigma_val:5.2f}σ | Confidence: {prob:.1%}")
+
+        ranking_score = ranking_score.sort_values(ascending=False)
         target_weights = {}
         
         # LOGIC MODIFICATION: Use 'current_direction' instead of self.direction
         
         if current_direction == "long":
-            # Long Mode: Prefer positive Z-scores
-            pos_score = score[score > 0]
-            if pos_score.empty:
-                 logger.info("Regime BULL/LONG but no positive scores found. Standing aside.")
-                 return {}
-            topk_idx = pos_score.head(self.topk).index
+            # Long Mode: Only consider positive original scores
+            pos_mask = score > 0
+            eligible_idx = ranking_score[pos_mask[ranking_score.index]].head(self.topk).index
             
         elif current_direction == "short":
-            # Short Mode: Prefer negative Z-scores
-            neg_score = score[score < 0]
-            if neg_score.empty:
-                logger.info("Regime BEAR/SHORT but no negative scores found. Standing aside.")
-                return {}
-            # Select most negative
-            topk_idx = neg_score.nsmallest(self.topk).index
+            # Short Mode: Only consider negative original scores
+            neg_mask = score < 0
+            eligible_idx = ranking_score[neg_mask[ranking_score.index]].head(self.topk).index
             
         elif current_direction == "long-short":
-            # Standard Long-Short (Direction = Sign(Score), Opportunity = Abs(Score))
-            abs_score = score.abs().sort_values(ascending=False)
-            topk_idx = abs_score.head(self.topk).index
+            # Standard Long-Short: Top K by absolute composite score
+            eligible_idx = ranking_score.head(self.topk).index
 
         # Generate weights with leverage
-        if len(topk_idx) > 0:
+        if len(eligible_idx) > 0:
             # Global leverage default (default to 1.0 if not found)
             global_leverage = self.kwargs.get('leverage', 1.0)
             
-            for inst in topk_idx:
+            for inst in eligible_idx:
                 # Resolve leverage for this asset
                 asset_lev = self._get_param(inst, 'leverage', global_leverage)
                 
@@ -323,3 +355,9 @@ class CryptoLongShortStrategy(WeightStrategyBase):
                 excl.append(inst)
                 
         return excl
+
+    def _get_amplitudes(self, instruments: List[str], end_time: pd.Timestamp) -> pd.Series:
+        # Deprecated: History-based amplitude is less reliable than model prediction
+        return pd.Series(1.0, index=instruments)
+
+

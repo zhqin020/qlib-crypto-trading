@@ -63,6 +63,8 @@ class LiveTradingLoop:
             topk=self.config.get("backtest", {}).get("topk", 3),
             signal_threshold=strat_cfg.get("signal_threshold", 0),
             leverage=strat_cfg.get("leverage", 1.0),
+            ranking_mode=strat_cfg.get("ranking_mode", "signal"),
+            amplitude_window=strat_cfg.get("amplitude_window", 24),
             instrument_config=strat_cfg.get("instruments", {})
         )
         logger.info("LiveTradingLoop __init__ done.")
@@ -137,7 +139,11 @@ class LiveTradingLoop:
             # Load feature config
             feature_cfg_file = self.config_path.parent / "features" / f"{self.feature_set}.json"
             if not feature_cfg_file.exists():
-                logger.error(f"Feature config not found: {feature_cfg_file}")
+                # Fallback to main config dir
+                feature_cfg_file = Path(__file__).parent.parent.parent / "config" / "features" / f"{self.feature_set}.json"
+            
+            if not feature_cfg_file.exists():
+                logger.error(f"Feature config not found in any expected location: {feature_cfg_file}")
                 return None
 
             with open(feature_cfg_file, "r") as f:
