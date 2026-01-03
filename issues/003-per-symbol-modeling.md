@@ -39,3 +39,18 @@ Shift from Global Modeling to Per-Symbol Modeling. Each instrument in the univer
 1.  **Adaptive Sigma-Thresholding**: Instead of trading the `TopK` fixed assets, only execute trades where `Confidence > 90%`.
 2.  **Per-Symbol Meta-Optimization**: Analyze which of the 158 features contribute most to each coin's performance to further refine individual models.
 3.  **Uncertainty Quantification**: Implement MC Dropout in `QlibPredictor` for deep-learning-native confidence estimation.
+🚀 下一步方向建议
+基于目前的进展，我建议从以下三个维度中选择一个作为下一步的突破口：
+
+方向 1：自适应 Sigma 阈值决策 (Adaptive Execution)
+设想：目前我们是取固定数量的 $TopK$ 币种。
+目标：改为基于 置信度门槛。例如：只有当某个信号的置信度 $> 90%$（或 $Sigma > 2.5$）时才允许开仓。
+价值：宁缺毋滥，在震荡市中自动过滤那些低置信度的日常噪音信号。
+方向 2：单币种特征专家分析 (Instrument-Specific Meta-Analysis)
+设想：每个币种的模型现在是独立的，但它们共享相同的 158 个因子。
+目标：分析并筛选出对 BTC 特别有效的因子，与对 SOL 特别有效的因子。
+价值：为不同属性的币种量身定制“特征工程”，进一步提升单币种模型的 F1-Score。
+方向 3：深度学习原生置信度 (Uncertainty Quantification)
+设想：目前 Sigma 是基于统计结果的外部评价。
+目标：在推理时启用 MC Dropout，让 ALSTM 运行 10 次并计算方差，得出模型内部的“不确定性”。
+价值：如果 10 次运行结果一致，说明模型对当前走势“非常有把握”，这比单纯的偏离度统计更具前瞻性。

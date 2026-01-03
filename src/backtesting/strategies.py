@@ -46,6 +46,7 @@ class CryptoLongShortStrategy(WeightStrategyBase):
         inst_config = kwargs.pop('instrument_config', {})
         ranking_mode = kwargs.pop('ranking_mode', 'signal')
         amplitude_window = kwargs.pop('amplitude_window', 24)
+        min_sigma_threshold = kwargs.pop('min_sigma_threshold', 0.0)
         
         super().__init__(signal=signal, risk_degree=risk_degree, **kwargs)
         
@@ -54,6 +55,7 @@ class CryptoLongShortStrategy(WeightStrategyBase):
         self.instrument_config = inst_config
         self.ranking_mode = ranking_mode
         self.amplitude_window = amplitude_window
+        self.min_sigma_threshold = min_sigma_threshold
         self.topk = topk
         self.orig_direction = direction.lower() # Store original config
         self.direction = self.orig_direction
@@ -68,6 +70,10 @@ class CryptoLongShortStrategy(WeightStrategyBase):
         # Prediction History for Sigma calculation (Confidence)
         self.prediction_history: Dict[str, List[float]] = {}
         self.max_history = 100 # Lookback for sigma logic
+        
+        # Statistics tracking for adaptive threshold
+        self.filtered_signals_count = 0
+        self.total_signals_count = 0
         
         # Initialize Regime Detector
         self.detector = MarketRegimeDetector()
@@ -238,6 +244,36 @@ class CryptoLongShortStrategy(WeightStrategyBase):
             
         if score.empty:
             return {}
+
+        # 6.5. Adaptive Sigma Threshold Filtering
+        self.total_signals_count += len(score)
+        
+        if self.min_sigma_threshold > 0:
+            # Filter signals by confidence (Sigma)
+            qualified_signals = {}
+            for inst in score.index:
+                sigma_val = abs(sigmas.get(inst, 0))
+                if sigma_val >= self.min_sigma_threshold:
+                    qualified_signals[inst] = score[inst]
+            
+            filtered_count = len(score) - len(qualified_signals)
+            self.filtered_signals_count += filtered_count
+            
+            if not qualified_signals:
+                logger.info(
+                    f"⚠️  No signals meet {self.min_sigma_threshold}σ threshold. "
+                    f"Filtered {filtered_count}/{len(score)} signals. Holding cash."
+                )
+                return {}
+            
+            if filtered_count > 0:
+                logger.info(
+                    f"🔍 Sigma Filter: {len(qualified_signals)}/{len(score)} signals qualified "
+                    f"(threshold: {self.min_sigma_threshold}σ, filtered: {filtered_count})"
+                )
+            
+            # Replace score with qualified signals only
+            score = pd.Series(qualified_signals)
 
         # 7. Selection & Ranking
         # Target: Price magnitude change. Use abs(score) as the primary rank.

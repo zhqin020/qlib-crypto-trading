@@ -65,6 +65,7 @@ async def run_backtest(
     init_investment: float = 100000,
     leverage: int = 1,
     signal_threshold: float = 0.0,
+    min_sigma_threshold: float = 0.0,
     start_time: Optional[str] = None,
     end_time: Optional[str] = None,
     benchmark: Optional[str] = None,
@@ -125,13 +126,33 @@ async def run_backtest(
             qlib_dir = project_root / "data" / "qlib" / dataset_ref
 
             # Pre-load model metadata to resolve frequency correctly
-            model_meta_file = models_dir / f"{model_id}_meta.json"
-            if not model_meta_file.exists():
-                logger.warning(f"Metadata for model {model_id} not found at {model_meta_file}. Using defaults.")
-                model_meta = {}
+            if model_id.endswith(".json"):
+                map_file = Path(model_id)
+                if not map_file.is_absolute():
+                     if (project_root / model_id).exists(): map_file = project_root / model_id
+                     elif (project_root / "models" / model_id).exists(): map_file = project_root / "models" / model_id
+                
+                if map_file.exists():
+                    with open(map_file) as f:
+                        map_data = json.load(f)
+                    
+                    # Use one of the symbol's metadata as a proxy for the group
+                    first_symbol = next(iter(map_data.get("symbols", {}).keys()), None)
+                    if first_symbol:
+                        model_meta = map_data["symbols"][first_symbol]
+                        logger.info(f"Loaded proxy metadata from symbol {first_symbol}")
+                    else:
+                        model_meta = {}
+                else:
+                    model_meta = {}
             else:
-                with open(model_meta_file) as f:
-                    model_meta = json.load(f)
+                model_meta_file = models_dir / f"{model_id}_meta.json"
+                if not model_meta_file.exists():
+                    logger.warning(f"Metadata for model {model_id} not found at {model_meta_file}. Using defaults.")
+                    model_meta = {}
+                else:
+                    with open(model_meta_file) as f:
+                        model_meta = json.load(f)
 
             # Step 1: Auto-switch dataset based on model metadata
             trained_dataset = model_meta.get("dataset")
@@ -243,13 +264,32 @@ async def run_backtest(
                 await monitor.update_progress(process_id, 42.9, f"Loading model '{model_id}'", 3)
 
                 # Load model
-                model_path = models_dir / f"{model_id}.pkl"
-                if not model_path.exists():
-                    await monitor.fail_process(process_id, f"Model {model_id} not found")
-                    return {"error": f"Model {model_id} not found"}
+                # Support for per-symbol modeling: if model_id looks like a mapping path or is .json
+                if model_id.endswith(".json"):
+                     # It's a mapping file
+                     map_path = Path(model_id)
+                     if not map_path.is_absolute():
+                         # Try finding it in models/ or project root
+                         if (project_root / model_id).exists():
+                             map_path = project_root / model_id
+                         elif (project_root / "models" / model_id).exists():
+                             map_path = project_root / "models" / model_id
+                     
+                     from models.wrappers import MultiModelWrapper
+                     logger.info(f"Loading MultiModelWrapper from {map_path}")
+                     model = MultiModelWrapper(map_path)
+                else:
+                    model_path = models_dir / f"{model_id}.pkl"
+                    if not model_path.exists():
+                        # Try absolute path or direct path
+                        if Path(model_id).exists():
+                            model_path = Path(model_id)
+                        else:
+                            await monitor.fail_process(process_id, f"Model {model_id} not found at {model_path}")
+                            return {"error": f"Model {model_id} not found"}
 
-                with open(model_path, 'rb') as f:
-                    model = pickle.load(f)
+                    with open(model_path, 'rb') as f:
+                        model = pickle.load(f)
 
                 # Step 4: Configure backtest
                 await monitor.update_progress(
@@ -286,7 +326,7 @@ async def run_backtest(
                     # Qlib expects symbols without /USDT in many providers, 
                     # but our converter uses lowercase and no slash.
                     # Standardizing to what the Qlib data path contains.
-                    clean_instruments = [i.split('/')[0].lower() for i in instruments]
+                    clean_instruments = [i.split('/')[0].upper() for i in instruments]
                     handler_config["kwargs"]["instruments"] = clean_instruments
                     logger.info(f"Backtest limited to {len(clean_instruments)} instruments: {clean_instruments}")
 
@@ -374,6 +414,7 @@ async def run_backtest(
                             "take_profit": take_profit,
                             "stop_loss": stop_loss,
                             "signal_threshold": signal_threshold,
+                            "min_sigma_threshold": min_sigma_threshold,
                             "risk_degree": float(leverage),
                             # Provide resolved data frequency so strategies can query with the correct freq
                             "data_freq": qlib_handler_freq,
@@ -764,7 +805,9 @@ async def run_backtest(
             bt_dir = project_root / "backtests"
             bt_dir.mkdir(parents=True, exist_ok=True)
 
-            bt_file = bt_dir / f"{model_id}_backtest.json"
+            # Clean model_id for filename (remove path separators)
+            clean_model_id = Path(model_id).stem if "/" in model_id or "\\" in model_id else model_id
+            bt_file = bt_dir / f"{clean_model_id}_backtest.json"
             with open(bt_file, 'w') as f:
                 json.dump(result, f, indent=2, default=str)
 
