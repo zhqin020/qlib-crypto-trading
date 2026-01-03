@@ -47,6 +47,7 @@ class CryptoLongShortStrategy(WeightStrategyBase):
         ranking_mode = kwargs.pop('ranking_mode', 'signal')
         amplitude_window = kwargs.pop('amplitude_window', 24)
         min_sigma_threshold = kwargs.pop('min_sigma_threshold', 0.0)
+        enable_regime = kwargs.pop('enable_regime', False)
         
         super().__init__(signal=signal, risk_degree=risk_degree, **kwargs)
         
@@ -56,6 +57,7 @@ class CryptoLongShortStrategy(WeightStrategyBase):
         self.ranking_mode = ranking_mode
         self.amplitude_window = amplitude_window
         self.min_sigma_threshold = min_sigma_threshold
+        self.enable_regime = enable_regime
         self.topk = topk
         self.orig_direction = direction.lower() # Store original config
         self.direction = self.orig_direction
@@ -104,93 +106,17 @@ class CryptoLongShortStrategy(WeightStrategyBase):
         if score is None or score.empty:
             return {}
 
-        # 0. Market Regime Detection
-        # We need BTC history to detect regime.
-        # Qlib's 'score' often contains the benchmark if it's in the universe.
-        # Or we can try to fetch it via the Exchange if possible (trade_exchange).
-        # For simplicity/speed in backtest, we might infer from the 'score' index dates?
-        # Actually, best is to check if we can get BTC price.
+        # Regime Detection has been disabled as per user request.
+        # Original location of lines 109-186
         
-        regime = MarketRegime.BULL # Default
-        risk_score = 1.0
-        metrics = {}
+        # 1. (Skipped Regime Logic)
         
+        # Determine Current Direction (Simplified)
         if self.force_regime:
-            regime = self.force_regime
-            logger.info(f"[Regime] Using Forced Regime: {regime.value}")
-        else:
-            try:
-                # We try to get BTC close history ending at trade_start_time
-                # Get 100 days lookback for EMA60
-                lookback = pd.Timedelta(days=100)
-                
-                # Note: qlib strategies usually don't have direct access to "D" (data provider) efficiently in loop?
-                # But self.trade_exchange should support get_close?
-                # The easiest way is to use 'common_infra' or D if available.
-                from qlib.data import D
-                
-                # Find the BTC instrument name in our universe (e.g. BTC, BTC/USDT)
-                # We assume self.benchmark is correct.
-                # D.features is relatively fast if cached
-                
-                # Normalize benchmark name for Qlib query.
-                # Try uppercase/base forms first (most datasets use uppercase symbols),
-                # then try common exchange suffix formats and lowercase fallbacks.
-                up = self.benchmark.upper()
-                low = self.benchmark.lower()
-                bench_candidates = [
-                    up,
-                    f"{up}/USDT",
-                    f"{up}_USDT",
-                    low,
-                    f"{low}/usdt",
-                ]
-                btc_df = pd.DataFrame()
-                
-                for bench in bench_candidates:
-                    try:
-                        df = D.features([bench], ['$close'], start_time=trade_start_time - lookback, end_time=trade_start_time, freq=self.data_freq)
-                        if not df.empty:
-                            btc_df = df
-                            # print(f"Found benchmark data for {bench}")
-                            break
-                    except Exception:
-                        # Continue to next candidate if this one fails (avoid noisy stack traces)
-                        continue
-                
-                if not btc_df.empty:
-                    # D returns MultiIndex (instrument, datetime). Reset to get clean timeseries
-                    if isinstance(btc_df.index, pd.MultiIndex):
-                        # Reset the instrument level (level 0) to get a datetime index
-                        btc_df = btc_df.reset_index(level=0, drop=True)
-                    
-                    # Detect
-                    regime, risk_score, metrics = self.detector.detect(btc_df)
-                    logger.info(f"[Regime] Date: {trade_start_time} | Regime: {regime.value} | Score: {risk_score:.2f} | Close: {metrics.get('price'):.2f}")
-                else:
-                    logger.warning(f"[Regime] WARNING: No data for {self.benchmark} at {trade_start_time}")
-                    
-            except Exception as e:
-                logger.warning(f"Regime detection failed: {e}")
-
-        # 1. Adjust Strategy based on Regime
-        current_direction = self.orig_direction
+             logger.warning("Force regime ignored as Regime Detection is disabled.")
         
-        if regime == MarketRegime.BEAR:
-            # In Bear market: ONLY allowed to SHORT
-            # Even if configured as "long-short" or "long", we force "short"
-            # Or "short-only" mode where we ignore long signals.
-            # User wants: "Good coin to short".
-            current_direction = "short" 
-            logger.info(f"Regime BEAR: Forcing SHORT-ONLY mode.")
-            
-        elif regime == MarketRegime.BULL:
-            # In Bull market: ONLY allowed to LONG
-            # (Prevent shorting strong trends)
-            current_direction = "long"
-            logger.info(f"Regime BULL: Forcing LONG-ONLY mode.")
-            
-        # If SIDEWAYS or UNKNOWN, stick to orig_direction (usually long-short)
+        current_direction = self.direction
+
 
         # 2. Update Entry Prices for new/existing positions
         self._update_entry_info(current)

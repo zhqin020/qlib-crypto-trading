@@ -46,6 +46,7 @@ async def test_sigma_threshold(
         init_investment=100000,
         leverage=1,
         signal_threshold=0.0,
+        min_sigma_threshold=min_sigma,
         start_time=start_time,
         end_time=end_time,
         benchmark="BTC",

@@ -68,6 +68,7 @@ async def main():
     parser.add_argument("--init-investment", type=float, default=tr_config.get("init_investment", 100000), help="Initial capital in USDT")
     parser.add_argument("--leverage", type=int, default=tr_config.get("leverage", 1), help="Leverage multiplier to apply to positions")
     parser.add_argument("--threshold", type=float, default=tr_config.get("signal_threshold", 0.0), help="Absolute score threshold. Scores below this are ignored (no confidence, no trade)")
+    parser.add_argument("--min-sigma", dest="min_sigma", type=float, default=tr_config.get("min_sigma_threshold", 0.0), help="Minimum sigma threshold for signal confidence filtering")
     
     # Portfolio subset
     default_portfolio = bt_config.get("portfolios")
@@ -122,6 +123,7 @@ async def main():
         init_investment=args.init_investment,
         leverage=args.leverage,
         signal_threshold=args.threshold,
+        min_sigma_threshold=args.min_sigma,
         start_time=args.start_time,
         end_time=args.end_time,
         benchmark=args.benchmark,

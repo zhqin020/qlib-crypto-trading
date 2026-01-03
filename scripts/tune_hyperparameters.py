@@ -157,10 +157,12 @@ def calculate_composite_score(metrics):
         
     return composite - penalty
 
-def objective(trial, model_type, folds, base_config):
-    """Optuna objective function."""
+def objective(trial, model_type, folds, base_config, symbol):
+    """Optuna objective function for a specific symbol."""
     trial_id = trial.number
-    trial_config_path = TMP_DIR / f"config_{model_type}_{trial_id}.json"
+    # Sanitize symbol for filename
+    safe_symbol = symbol.replace("/", "_")
+    trial_config_path = TMP_DIR / f"config_{model_type}_{safe_symbol}_{trial_id}.json"
     
     tuning_cfg = base_config.get("tuning", {})
     n_epochs = tuning_cfg.get("n_epochs", 20)
@@ -212,6 +214,9 @@ def objective(trial, model_type, folds, base_config):
     trial_config["training"]["models"][model_type].update(params)
     trial_config["training"]["model_type"] = model_type
     
+    # INJECT PER-SYMBOL RESTRICTION
+    trial_config["training"]["instruments"] = [symbol]
+    
     if "backtest" not in trial_config: trial_config["backtest"] = {}
     if "trading" not in trial_config: trial_config["trading"] = {}
     trial_config["backtest"]["topk"] = strat_params["topk"]
@@ -233,10 +238,10 @@ def objective(trial, model_type, folds, base_config):
     try:
         # Combine params for logging
         all_params = {**params, **strat_params, **risk_params}
-        print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Trial {trial_id} START | Params: {json.dumps(all_params)}", flush=True)
+        print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Trial {trial_id} ({symbol}) START | Params: {json.dumps(all_params)}", flush=True)
 
         for i, fold in enumerate(folds):
-            # Check for embedding
+            # Check for embedding (Disabled for per-symbol usually, but optional)
             embedding_flag = ""
             if base_config.get("training", {}).get("use_embedding", False):
                 embedding_flag = "--embedding"
@@ -296,12 +301,13 @@ def get_storage_url(config: Dict[str, Any]) -> Optional[str]:
     return f"postgresql://{user}:{password}@{host}:{port}/{dbname}"
 
 def main():
-    parser = argparse.ArgumentParser(description="Hyperparameter Tuning with Optuna (Model + Strat + Risk)")
-    parser.add_argument("--trials", type=int, default=20, help="Number of trials to run")
+    parser = argparse.ArgumentParser(description="Hyperparameter Tuning with Optuna (Per-Symbol)")
+    parser.add_argument("--trials", type=int, default=20, help="Number of trials to run per symbol")
     parser.add_argument("--model", type=str, default=None, help="Model type to tune")
     parser.add_argument("--folds", type=int, default=3, help="Number of folds for WFV")
     parser.add_argument("--n_jobs", type=int, default=1, help="Parallel workers")
-    parser.add_argument("--study_name", type=str, default=None, help="Study name")
+    parser.add_argument("--study_name", type=str, default=None, help="Base study name prefix")
+    parser.add_argument("--symbols", type=str, default=None, help="Comma-separated list of symbols to tune")
     args = parser.parse_args()
 
     setup_dirs()
@@ -314,6 +320,14 @@ def main():
         base_config = load_config()
         model_type = args.model or base_config.get("training", {}).get("model_type", "lightgbm")
         
+        # Determine symbols to tune
+        if args.symbols:
+            target_symbols = [s.strip() for s in args.symbols.split(",")]
+        else:
+            target_symbols = base_config.get("data", {}).get("symbols", [])
+            
+        logger.info(f"Target Symbols: {target_symbols}")
+
         folds = generate_wfv_folds(
             start_date=base_config.get("training", {}).get("start_time", "2023-01-01"),
             end_date=(datetime.now(timezone.utc) - timedelta(days=2)).strftime("%Y-%m-%d"),
@@ -323,44 +337,55 @@ def main():
         )
         
         storage_url = get_storage_url(base_config)
-        study_name = args.study_name or f"crypto_tuning_{model_type}_{datetime.now().strftime('%Y%m%d_%H%M')}"
+        base_study_name = args.study_name or f"crypto_tuning_{model_type}_{datetime.now().strftime('%Y%m%d_%H%M')}"
         
-        logger.info(f"Starting Tuning: {model_type.upper()}, {args.trials} trials, {args.n_jobs} jobs.")
+        all_best_params = {}
         
-        study = optuna.create_study(study_name=study_name, storage=storage_url, direction="maximize", load_if_exists=True)
-        study.optimize(lambda trial: objective(trial, model_type, folds, base_config), n_trials=args.trials, n_jobs=args.n_jobs)
+        for symbol in target_symbols:
+            safe_symbol = symbol.replace("/", "_")
+            study_name = f"{base_study_name}_{safe_symbol}"
+            
+            logger.info(f"\n{'='*60}")
+            logger.info(f"🚀 Starting Tuning for {symbol} (Study: {study_name})")
+            logger.info(f"{'='*60}")
         
-        # Report Best
-        print("\n" + "="*80)
-        print(f"🥇 OPTIMIZATION COMPLETE - Study: {study_name}")
-        print(f"Best Composite Score (WPS): {study.best_value:.4f}")
-        
-        # Sync and Save
+            study = optuna.create_study(study_name=study_name, storage=storage_url, direction="maximize", load_if_exists=True)
+            study.optimize(lambda trial: objective(trial, model_type, folds, base_config, symbol), n_trials=args.trials, n_jobs=args.n_jobs)
+            
+            logger.info(f"✅ {symbol} Tuning Complete. Best WPS: {study.best_value:.4f}")
+            all_best_params[symbol] = study.best_params
+
+        # Update Config with Per-Symbol Params
         best_config = load_config(BACKUP_PATH)
-        m_keys = ["learning_rate", "num_leaves", "lambda_l2", "max_depth", "n_estimators", "lr", "dropout", "hidden_size", "rnn_type"]
-        best_params = study.best_params
         
-        # Process Params
-        model_updates = {k: v for k, v in best_params.items() if k in m_keys}
-        best_config["training"]["models"][model_type].update(model_updates)
-        best_config["trading"]["leverage"] = int(best_params.get("leverage", 1))
-        best_config["trading"]["signal_threshold"] = best_params.get("threshold", 0.0)
-        best_config["trading"]["stop_loss"] = -best_params.get("stop_loss_abs", 0.1)
-        best_config["trading"]["take_profit"] = best_params.get("take_profit_abs", 0.2)
-        best_config["backtest"]["topk"] = int(best_params.get("topk", 3))
+        if "per_symbol_models" not in best_config:
+            best_config["per_symbol_models"] = {}
         
+        for symbol, best_params in all_best_params.items():
+            # Process Params
+            m_keys = ["learning_rate", "num_leaves", "lambda_l2", "max_depth", "n_estimators", "lr", "dropout", "hidden_size", "rnn_type"]
+            model_updates = {k: v for k, v in best_params.items() if k in m_keys}
+            
+            # Construct per-symbol entry
+            symbol_entry = {
+                "model_type": model_type,
+                "model_params": model_updates,
+                "trading": {
+                    "leverage": int(best_params.get("leverage", 1)),
+                    "signal_threshold": best_params.get("threshold", 0.0),
+                    "stop_loss": -best_params.get("stop_loss_abs", 0.1),
+                    "take_profit": best_params.get("take_profit_abs", 0.2)
+                },
+                "backtest_topk": int(best_params.get("topk", 3))
+            }
+            
+            best_config["per_symbol_models"][symbol] = symbol_entry
+            
         save_config(best_config, BEST_CONFIG_PATH)
         
-        # Print Detailed Summary
-        print("\n--- Optimized Configuration ---")
-        print(f"Model ID: (To be generated upon full training)")
-        print(f"ALSTM Params: {model_updates}")
-        print(f"Strategy: topk={best_config['backtest']['topk']}, leverage={best_config['trading']['leverage']}, threshold={best_config['trading']['signal_threshold']:.4f}")
-        print(f"Risk Control: SL={best_config['trading']['stop_loss']:.1%}, TP={best_config['trading']['take_profit']:.1%}")
-        
-        print("\n--- Validation Command ---")
-        print(f"1. Train Full: python scripts/train_sample_model.py --config {BEST_CONFIG_PATH} --model {model_type}")
-        print(f"2. Backtest:    python scripts/run_backtest.py <MODEL_ID> --config {BEST_CONFIG_PATH}")
+        print("\n" + "="*80)
+        print(f"🥇 PER-SYMBOL OPTIMIZATION COMPLETE")
+        print(f"Results saved to {BEST_CONFIG_PATH} under 'per_symbol_models'")
         print("="*80 + "\n")
         
     except Exception as e:
